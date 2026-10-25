@@ -4,7 +4,7 @@ Computes FAO-56 Penman-Monteith reference evapotranspiration (ETo), single crop
 coefficient crop evapotranspiration (ETc = Kc × ETo), effective rainfall and net
 irrigation requirement (mm, m³, m³/da, m³/ha) for polygon or point layers.
 
-**Status:** v0.0.6 – calculation core and a QGIS Processing algorithm; no dialog yet.
+**Status:** v0.0.7 – calculation core and a QGIS Processing algorithm; no dialog yet.
 
 ## Layout
 

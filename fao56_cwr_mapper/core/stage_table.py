@@ -137,6 +137,65 @@ def stage_options(kc_crop, stages, mapping):
     return out
 
 
+MONTHS = {m: i for i, m in enumerate(
+    ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), start=1)}
+
+
+def planting_months(text):
+    """Months named in a Table 11 'Plant Date' cell ('Apr/May' -> {4, 5}, 'Mar-May' -> {3, 4, 5})."""
+    months = set()
+    for part in re.split(r"[/;,]", text):
+        months.update(MONTHS[w[:3].lower()] for w in re.findall(r"[A-Za-z]{3,}", part)
+                      if w[:3].lower() in MONTHS)
+        span = re.search(r"([A-Za-z]{3,})\.?\s*-\s*([A-Za-z]{3,})", part)   # "Mar-May"
+        if span and span.group(1)[:3].lower() in MONTHS and span.group(2)[:3].lower() in MONTHS:
+            a, b = MONTHS[span.group(1)[:3].lower()], MONTHS[span.group(2)[:3].lower()]
+            months.update(range(a, b + 1) if a <= b else list(range(a, 13)) + list(range(1, b + 1)))
+    return months
+
+
+def _region_match(option, keyword):
+    # first five letters, so that "Mediterranean" also finds "Medit." and "Tropics" finds "Tropical"
+    needle = keyword.lower()[:5]
+    return needle in option.region.lower()
+
+
+def select_stage_option(options, region, planting_date):
+    """Pick a Table 11 option; returns (option, note). note is None for a clean match.
+
+    1. Options whose region matches the keyword (planting month and matching
+       totals preferred among them).
+    2. Otherwise options whose 'Plant Date' includes the planting month.
+    3. Otherwise the first option. Cases 2 and 3 return a note naming the
+       choice and the alternatives, so the user can check it.
+    """
+    if not options:
+        return None, None
+
+    def rank(opts):
+        month = planting_date.month
+        return sorted(opts, key=lambda o: (month not in planting_months(o.plant_date),
+                                           not o.total_matches))  # stable: table order otherwise
+
+    if region:
+        by_region = [o for o in options if _region_match(o, region)]
+        if by_region:
+            return rank(by_region)[0], None
+    by_month = [o for o in options if planting_date.month in planting_months(o.plant_date)]
+    head = "no FAO-56 Table 11 example for region '{}'".format(region) if region else \
+        "no region keyword given"
+    if by_month:
+        chosen = rank(by_month)[0]
+        others = [o.label for o in by_month if o is not chosen]
+        note = "{}; stage lengths chosen by planting month: {}".format(head, chosen.label)
+        if others:
+            note += "; other examples for this month: " + "; ".join(others)
+        return chosen, note
+    chosen = rank(options)[0]
+    return chosen, "{}; no example for planting month {}; used {}".format(
+        head, planting_date.strftime("%B"), chosen.label)
+
+
 def season_kc_series(kc_crop, stage, planting_date):
     """Daily (date, kc, stage name) for a CropKc grown with a StageLengths option."""
     return water_balance.kc_series(planting_date, kc_crop.kc_ini, kc_crop.kc_mid,

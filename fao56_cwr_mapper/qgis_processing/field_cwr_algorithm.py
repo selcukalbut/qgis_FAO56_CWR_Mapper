@@ -63,7 +63,7 @@ RESULT_FIELDS = [
     ("pe_frac", QVariant.Double, 5, 2),
     ("elev_m", QVariant.Double, 8, 1),
     ("clim_src", QVariant.String, 80, 0),
-    ("status", QVariant.String, 254, 0),
+    ("status", QVariant.String, 1000, 0),   # shapefile output truncates to 254
 ]
 DAILY_COLUMNS = ["fid", "date", "dekad", "stage", "Kc", "ETo", "ETc", "P", "Pe", "NIR"]
 PERIOD_COLUMNS = ["fid", "period", "days", "missing_days", "ETo", "ETc", "P", "Pe", "NIR"]
@@ -141,9 +141,11 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             "(FAO-56 Table 12, e.g. 'Tomato', 'Sunflower - irrigated'), or the Crop parameter "
             "for all features. Planting date: a date field (or YYYY-MM-DD text) or the "
             "Planting date parameter.\n\n"
-            "Stage lengths: four optional numeric fields (days), otherwise the first FAO-56 "
-            "Table 11 example whose region contains the Region keyword (else the first "
-            "example). The option used is written to 'stage_used'.\n\n"
+            "Stage lengths: four optional numeric fields (days), otherwise an FAO-56 Table 11 "
+            "example whose region matches the Region keyword. If no region matches, the "
+            "example planted in the same month is used and 'status' carries a warning that "
+            "names the choice and the other examples for that month. The option used is "
+            "written to 'stage_used'; local stage lengths are always preferable.\n\n"
             "Climate is queried at a point inside each polygon. NASA POWER is a coarse "
             "(about 0.5 degree) global grid; compare with local station data where possible. "
             "Areas are ellipsoidal. Days without data are never filled; they are counted in "
@@ -215,7 +217,8 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             hint = " Did you mean: {}?".format(", ".join(close)) if close else ""
             raise ValueError("crop '{}' not found in the crop table.{}".format(name, hint))
 
-    def _stage(self, feature, l_fields, crop, stages, mapping, region):
+    def _stage(self, feature, l_fields, crop, stages, mapping, region, planting_date):
+        """(StageLengths, note); note explains a fallback choice, else None."""
         if all(l_fields):
             values = [feature[f] for f in l_fields]
             if any(v is None or v == NULL for v in values):
@@ -224,17 +227,12 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             if min(lengths) < 0 or sum(lengths) == 0:
                 raise ValueError("invalid stage lengths {}".format(lengths))
             return stage_table.StageLengths(crop.crop, crop.variant, 0, *lengths, total_printed=None,
-                                            region="field attributes", source="field attributes")
+                                            region="field attributes", source="field attributes"), None
         options = stage_table.stage_options(crop, stages, mapping)
         if not options:
             raise ValueError("FAO-56 Table 11 has no stage lengths for '{}'; provide the four "
                              "stage length fields".format(crop.name))
-        if region:
-            matching = [o for o in options if region.lower() in o.region.lower()]
-            preferred = [o for o in matching if o.total_matches]
-            if preferred or matching:
-                return (preferred or matching)[0]
-        return ([o for o in options if o.total_matches] or options)[0]
+        return stage_table.select_stage_option(options, region, planting_date)
 
     # --- run ----------------------------------------------------------------
 
@@ -335,7 +333,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             if name not in (None, NULL) and str(name).strip():
                 crop = self._find_crop(crops, str(name))
         plant = (_to_date(feat[plant_field]) if plant_field else None) or default_plant
-        stage = self._stage(feat, l_fields, crop, stages, mapping, region)
+        stage, stage_note = self._stage(feat, l_fields, crop, stages, mapping, region, plant)
 
         point = geom.pointOnSurface() if is_polygon else geom.centroid()
         point.transform(to_wgs84)
@@ -348,7 +346,8 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                                pe_fraction=pe_fraction, nir_period=nir_period,
                                efficiency=efficiency, fetcher=self.fetcher, cache_dir=cache)
         s = r["summary"]
-        status = "ok" if not s["warnings"] else "warning: " + " ".join(s["warnings"])
+        warnings = ([stage_note + "."] if stage_note else []) + s["warnings"]
+        status = "ok" if not warnings else "warning: " + " ".join(warnings)
         return {
             "crop_used": crop.name, "stage_used": stage.label,
             "season_beg": QDate(s["season_start"].year, s["season_start"].month, s["season_start"].day),
@@ -362,7 +361,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             "peak_dekad": s["peak_dekad"] or NULL, "peak_mm": _round(s["peak_dekad_NIR_mm"]),
             "miss_days": s["missing_days"], "nir_period": s["nir_period"],
             "pe_frac": pe_fraction, "elev_m": _round(s["elevation_m"]),
-            "clim_src": s["climate_source"], "status": status[:254],
+            "clim_src": s["climate_source"], "status": status[:1000],
             "_daily": r["daily"], "_dekad": r["dekad"],
         }
 

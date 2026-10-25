@@ -75,7 +75,8 @@ class TestFieldAlgorithm(unittest.TestCase):
         rows = [("tomato_default", None, None),
                 ("sunflower", "Sunflower - irrigated", QDate(2025, 4, 20)),
                 ("typo", "Tomatoe", None),
-                ("garlic", "Garlic", None)]
+                ("garlic", "Garlic", None),
+                ("maize", "Maize, Field (grain) (field corn) - grain dried in field", QDate(2025, 4, 20))]
         feats = []
         for i, (name, crop, planted) in enumerate(rows):
             x, y = 542000 + i * 500, 4536000
@@ -111,9 +112,15 @@ class TestFieldAlgorithm(unittest.TestCase):
         self.assertEqual(feats["typo"]["NIR_mm"], NULL)
         self.assertIn("no stage lengths", feats["garlic"]["status"])
 
+        m = feats["maize"]                                             # no Mediterranean maize row
+        self.assertTrue(m["status"].startswith("warning: no FAO-56 Table 11 example"))
+        self.assertIn("planting month", m["status"])
+        self.assertIn("April", m["stage_used"])
+        self.assertGreater(m["NIR_mm"], 0)
+
         with open(res["OUTPUT_DAILY"], newline="") as fh:
             daily = list(csv.DictReader(fh))
-        self.assertEqual(len(daily), 145 + 130)                          # tomato + sunflower days
+        self.assertEqual(len(daily), 145 + 130 + 180)                    # tomato, sunflower, maize
         with open(res["OUTPUT_DEKAD"], newline="") as fh:
             dekads = [r for r in csv.DictReader(fh) if int(r["fid"]) == t.id()]
         self.assertAlmostEqual(sum(float(r["NIR"]) for r in dekads), t["NIR_mm"], delta=0.2)

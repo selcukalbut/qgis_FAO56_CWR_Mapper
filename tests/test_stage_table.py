@@ -88,6 +88,35 @@ class TestCropMapping(unittest.TestCase):
         self.assertEqual(len(self.options("Winter Wheat - with frozen soils, hand harvested")), 3)
         self.assertEqual(len(self.options("Apples, Cherries, Pears - no ground cover, killing frost")), 3)
 
+    def test_planting_months(self):
+        cases = {"Apr/May": {4, 5}, "Mar-May": {3, 4, 5}, "Oct; Jan.": {1, 10}, "Sept": {9},
+                 "Dec/Jan": {12, 1}, "Rainy": set(), "Apr; Sep/Oct": {4, 9, 10}}
+        for text, months in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(st.planting_months(text), months)
+
+    def test_select_by_region(self):
+        opts = self.options("Sunflower - irrigated")
+        chosen, note = st.select_stage_option(opts, "Mediterranean", date(2025, 4, 15))
+        self.assertEqual(chosen.region, "Medit.; California")      # "Medit." abbreviation matched
+        self.assertIsNone(note)
+
+    def test_select_by_month_when_region_missing(self):
+        opts = self.options("Maize, Field (grain) (field corn) - grain dried in field")
+        chosen, note = st.select_stage_option(opts, "Mediterranean", date(2025, 4, 20))
+        self.assertEqual(chosen.plant_date, "April")
+        self.assertIn("no FAO-56 Table 11 example for region 'Mediterranean'", note)
+        self.assertIn("Spain", note)                               # alternatives listed
+        self.assertIn("Idaho", note)
+        chosen, note = st.select_stage_option(opts, "Spain", date(2025, 4, 20))
+        self.assertEqual((chosen.lengths, note), ((30, 40, 50, 30), None))
+
+    def test_select_without_month_match(self):
+        opts = self.options("Potato")
+        chosen, note = st.select_stage_option(opts, "Mediterranean", date(2025, 3, 10))
+        self.assertIs(chosen, opts[0])
+        self.assertIn("no example for planting month March", note)
+
     def test_crop_without_table11_lengths(self):
         self.assertEqual(self.options("Garlic"), [])
 
