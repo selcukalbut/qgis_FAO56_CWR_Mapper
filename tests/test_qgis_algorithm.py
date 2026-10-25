@@ -160,9 +160,29 @@ class TestFieldAlgorithm(unittest.TestCase):
                 self.assertEqual(feats[name]["status"], "ok")
                 self.assertRegex(feats[name]["stage_used"], "Medit")
 
-        # without the field, the keyword applies to all and maize falls back to the month rule
-        feats, _ = self.run_alg(layer, CROP_FIELD="crop", PLANTING_FIELD="planted")
+        # with the field switched off, the keyword applies to all and maize falls back to the month rule
+        feats, _ = self.run_alg(layer, CROP_FIELD="crop", PLANTING_FIELD="planted", REGION_FIELD="")
         self.assertTrue(feats["Field A"]["status"].startswith("warning"))
+
+    def sample_layer(self):
+        sample = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                              "sample_data", "tekirdag_fields.gpkg")
+        return QgsVectorLayer(sample + "|layername=fields", "sample", "ogr")
+
+    def test_default_field_names(self):
+        # 'crop', 'planted' and 'region' are picked up without naming them
+        feats, _ = self.run_alg(self.sample_layer())
+        self.assertIn("Spain", feats["Field A"]["stage_used"])
+        self.assertEqual(feats["Field A"]["season_beg"], QDate(2025, 4, 20))
+        self.assertTrue(all(f["status"] == "ok" for f in feats.values()))
+
+    def test_wrong_planting_field_stops_early(self):
+        alg = self.Alg()
+        alg.initAlgorithm()
+        feedback = QgsProcessingFeedback()
+        res, ok = alg.run({"INPUT": self.sample_layer(), "OUTPUT": "memory:", "USE_CACHE": False,
+                           "PLANTING_FIELD": "region"}, QgsProcessingContext(), feedback)
+        self.assertFalse(ok)
 
     def test_result_style(self):
         from qgis.core import QgsProcessingOutputLayerDefinition, QgsProject

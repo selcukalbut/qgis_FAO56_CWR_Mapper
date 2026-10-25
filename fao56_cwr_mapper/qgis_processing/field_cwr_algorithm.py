@@ -161,13 +161,14 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             [QgsProcessing.TypeVectorPolygon, QgsProcessing.TypeVectorPoint]))
         self.addParameter(QgsProcessingParameterField(
             self.CROP_FIELD, "Crop name field (optional)", parentLayerParameterName=self.INPUT,
-            type=QgsProcessingParameterField.String, optional=True))
+            type=QgsProcessingParameterField.String, optional=True, defaultValue="crop"))
         self.addParameter(QgsProcessingParameterEnum(
             self.CROP, "Crop (used when no crop field is given or it is empty)", options=names,
             defaultValue=names.index("Tomato")))
         self.addParameter(QgsProcessingParameterField(
-            self.PLANTING_FIELD, "Planting date field (optional)", parentLayerParameterName=self.INPUT,
-            type=QgsProcessingParameterField.Any, optional=True))
+            self.PLANTING_FIELD, "Planting date field (optional; date or YYYY-MM-DD text)",
+            parentLayerParameterName=self.INPUT, type=QgsProcessingParameterField.Any,
+            optional=True, defaultValue="planted"))
         last_year = date.today().year - 1
         self.addParameter(QgsProcessingParameterDateTime(
             self.PLANTING_DATE, "Planting date (used when no planting date field is given)",
@@ -178,7 +179,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         self.addParameter(QgsProcessingParameterField(
             self.REGION_FIELD, "Region keyword field (optional, overrides the keyword per feature)",
             parentLayerParameterName=self.INPUT, type=QgsProcessingParameterField.String,
-            optional=True))
+            optional=True, defaultValue="region"))
         for key, label in zip(self.L_FIELDS, ("initial", "development", "mid-season", "late season")):
             p = QgsProcessingParameterField(
                 key, "Stage length field, {} [days] (optional)".format(label),
@@ -241,6 +242,31 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                              "stage length fields".format(crop.name))
         return stage_table.select_stage_option(options, region, planting_date)
 
+    def _check_planting_field(self, source, name):
+        """Stop early when the planting date field clearly holds no dates."""
+        field = source.fields().field(name)
+        if field.type() not in (QVariant.Date, QVariant.DateTime, QVariant.String):
+            raise QgsProcessingException(
+                "Planting date field '{}' must be a date or text field (YYYY-MM-DD).".format(name))
+        values = []
+        for feat in source.getFeatures():
+            v = feat[name]
+            if v is not None and v != NULL and str(v).strip():
+                values.append(v)
+            if len(values) >= 20:
+                break
+        if not values:
+            return
+        for v in values:
+            try:
+                if _to_date(v):
+                    return
+            except ValueError:
+                pass
+        raise QgsProcessingException(
+            "Planting date field '{}' contains no dates (e.g. '{}'). Choose the field with "
+            "planting dates or leave it empty to use the Planting date parameter.".format(name, values[0]))
+
     # --- run ----------------------------------------------------------------
 
     def processAlgorithm(self, parameters, context, feedback):
@@ -258,13 +284,24 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         stages = stage_table.load_stage_table()
         mapping = stage_table.load_crop_mapping()
 
-        crop_field = self.parameterAsString(parameters, self.CROP_FIELD, context)
+        def layer_field(key):
+            # defaults name the fields 'crop', 'planted', 'region'; a layer without them just
+            # uses the default values instead of failing on every feature
+            name = self.parameterAsString(parameters, key, context)
+            if name and source.fields().indexOf(name) < 0:
+                feedback.pushInfo("Field '{}' not found in the input layer; not used.".format(name))
+                return ""
+            return name
+
+        crop_field = layer_field(self.CROP_FIELD)
         default_crop = self._crops[self.parameterAsEnum(parameters, self.CROP, context)]
-        plant_field = self.parameterAsString(parameters, self.PLANTING_FIELD, context)
+        plant_field = layer_field(self.PLANTING_FIELD)
+        if plant_field:
+            self._check_planting_field(source, plant_field)
         qd = self.parameterAsDateTime(parameters, self.PLANTING_DATE, context).date()
         default_plant = date(qd.year(), qd.month(), qd.day())
         region = (self.parameterAsString(parameters, self.STAGE_REGION, context).strip(),
-                  self.parameterAsString(parameters, self.REGION_FIELD, context))
+                  layer_field(self.REGION_FIELD))
         l_fields = [self.parameterAsString(parameters, k, context) for k in self.L_FIELDS]
         if any(l_fields) and not all(l_fields):
             raise QgsProcessingException("Give all four stage length fields or none.")

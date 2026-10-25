@@ -4,7 +4,7 @@ Computes FAO-56 Penman-Monteith reference evapotranspiration (ETo), single crop
 coefficient crop evapotranspiration (ETc = Kc × ETo), effective rainfall and net
 irrigation requirement (mm, m³, m³/da, m³/ha) for polygon or point layers.
 
-**Status:** v0.0.9 – calculation core and a QGIS Processing algorithm; no dialog yet.
+**Status:** v0.0.10 – calculation core and a QGIS Processing algorithm; no dialog yet.
 
 ## Layout
 
@@ -40,9 +40,9 @@ Optional CSV outputs: daily series and dekad totals.
 
 Sample data: `sample_data/tekirdag_fields.gpkg` – four fields near Tekirdağ
 (UTM 35N) with `crop`, `planted` and `region` fields (maize, sunflower, tomato,
-winter wheat). Use *Crop name field* = `crop`, *Planting date field* = `planted`
-and *Region keyword field* = `region` (maize uses the FAO-56 Table 11 'Spain'
-example, the other crops 'Mediterranean').
+winter wheat). Fields named `crop`, `planted` and `region` are selected
+automatically (maize uses the FAO-56 Table 11 'Spain' example, the other crops
+'Mediterranean'); layers without them fall back to the default values.
 
 ## Running the tests
 
