@@ -12,6 +12,8 @@ irrigation requirement (mm, m³, m³/da, m³/ha) for polygon or point layers.
 fao56_cwr_mapper/        QGIS plugin package (zip this folder to install)
   core/fao56.py          FAO-56 ETo, one function per equation
   core/water_balance.py  Kc curve (Eq. 66), effective rainfall, net irrigation, units
+  core/eto_series.py     Daily ETo series from climate records (missing days flagged)
+  climate_sources/       NASA POWER daily point client (with local cache)
 tests/                   Unit tests against FAO-56 worked examples (no QGIS needed)
 docs/                    Planning draft (Turkish)
 ```
@@ -34,6 +36,19 @@ The core uses only the Python standard library, so tests run with any Python ≥
 | 10, 11 | Rs, Rso, Rnl, Rn (Rio de Janeiro) | 14.5, 18.8, 3.5, 7.6 | ✓ |
 | 14 | u₂ from 10 m | 2.4 m/s | ✓ |
 | 17 | Daily ETo, all intermediates (Brussels, 6 July) | 3.9 mm/day | 3.88 |
+
+Cross-check: fed with Open-Meteo's own daily inputs (Tekirdağ, July 2025) the
+core reproduces Open-Meteo's FAO-56 ET0 monthly total within 0.1 %.
+
+## Data sources and attribution
+
+Climate data: NASA POWER daily point API (no key). These data were obtained
+from the NASA Langley Research Center (LaRC) POWER Project funded through the
+NASA Earth Science/Applied Science Program.
+
+POWER is a coarse global grid (about 0.5°). Near coasts or in complex terrain it
+can differ markedly from local conditions; local station data is recommended
+where available.
 
 ## License
 
