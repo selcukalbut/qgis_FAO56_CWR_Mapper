@@ -144,6 +144,26 @@ class TestFieldAlgorithm(unittest.TestCase):
         self.assertEqual(g["NIR_m3"], NULL)
         self.assertGreater(g["NIR_m3_ha"], 0)
 
+    def test_region_field_on_sample_data(self):
+        sample = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                              "sample_data", "tekirdag_fields.gpkg")
+        layer = QgsVectorLayer(sample + "|layername=fields", "sample", "ogr")
+        self.assertTrue(layer.isValid())
+        feats, _ = self.run_alg(layer, CROP_FIELD="crop", PLANTING_FIELD="planted",
+                                REGION_FIELD="region")
+        maize = feats["Field A"]
+        self.assertEqual(maize["status"], "ok")                       # 'Spain' from the field
+        self.assertIn("Spain", maize["stage_used"])
+        self.assertEqual(maize["season_end"], QDate(2025, 4, 20).addDays(149))   # 150 days
+        for name in ("Field B", "Field C", "Field D"):
+            with self.subTest(field=name):
+                self.assertEqual(feats[name]["status"], "ok")
+                self.assertRegex(feats[name]["stage_used"], "Medit")
+
+        # without the field, the keyword applies to all and maize falls back to the month rule
+        feats, _ = self.run_alg(layer, CROP_FIELD="crop", PLANTING_FIELD="planted")
+        self.assertTrue(feats["Field A"]["status"].startswith("warning"))
+
     def test_result_style(self):
         from qgis.core import QgsProcessingOutputLayerDefinition, QgsProject
         alg = self.Alg()

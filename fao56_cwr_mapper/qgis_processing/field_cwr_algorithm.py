@@ -100,6 +100,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
     PLANTING_FIELD = "PLANTING_FIELD"
     PLANTING_DATE = "PLANTING_DATE"
     STAGE_REGION = "STAGE_REGION"
+    REGION_FIELD = "REGION_FIELD"
     L_FIELDS = ("L_INI_FIELD", "L_DEV_FIELD", "L_MID_FIELD", "L_LATE_FIELD")
     USER_KC_CSV = "USER_KC_CSV"
     PE_FRACTION = "PE_FRACTION"
@@ -143,7 +144,8 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             "for all features. Planting date: a date field (or YYYY-MM-DD text) or the "
             "Planting date parameter.\n\n"
             "Stage lengths: four optional numeric fields (days), otherwise an FAO-56 Table 11 "
-            "example whose region matches the Region keyword. If no region matches, the "
+            "example whose region matches the Region keyword (or, per feature, the value of "
+            "the Region keyword field, e.g. 'Spain' for maize). If no region matches, the "
             "example planted in the same month is used and 'status' carries a warning that "
             "names the choice and the other examples for that month. The option used is "
             "written to 'stage_used'; local stage lengths are always preferable.\n\n"
@@ -173,6 +175,10 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         self.addParameter(QgsProcessingParameterString(
             self.STAGE_REGION, "Region keyword for FAO-56 Table 11 stage lengths",
             defaultValue="Mediterranean", optional=True))
+        self.addParameter(QgsProcessingParameterField(
+            self.REGION_FIELD, "Region keyword field (optional, overrides the keyword per feature)",
+            parentLayerParameterName=self.INPUT, type=QgsProcessingParameterField.String,
+            optional=True))
         for key, label in zip(self.L_FIELDS, ("initial", "development", "mid-season", "late season")):
             p = QgsProcessingParameterField(
                 key, "Stage length field, {} [days] (optional)".format(label),
@@ -257,7 +263,8 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         plant_field = self.parameterAsString(parameters, self.PLANTING_FIELD, context)
         qd = self.parameterAsDateTime(parameters, self.PLANTING_DATE, context).date()
         default_plant = date(qd.year(), qd.month(), qd.day())
-        region = self.parameterAsString(parameters, self.STAGE_REGION, context).strip()
+        region = (self.parameterAsString(parameters, self.STAGE_REGION, context).strip(),
+                  self.parameterAsString(parameters, self.REGION_FIELD, context))
         l_fields = [self.parameterAsString(parameters, k, context) for k in self.L_FIELDS]
         if any(l_fields) and not all(l_fields):
             raise QgsProcessingException("Give all four stage length fields or none.")
@@ -337,7 +344,12 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             if name not in (None, NULL) and str(name).strip():
                 crop = self._find_crop(crops, str(name))
         plant = (_to_date(feat[plant_field]) if plant_field else None) or default_plant
-        stage, stage_note = self._stage(feat, l_fields, crop, stages, mapping, region, plant)
+        keyword, region_field = region
+        if region_field:
+            value = feat[region_field]
+            if value not in (None, NULL) and str(value).strip():
+                keyword = str(value).strip()
+        stage, stage_note = self._stage(feat, l_fields, crop, stages, mapping, keyword, plant)
 
         point = geom.pointOnSurface() if is_polygon else geom.centroid()
         point.transform(to_wgs84)
