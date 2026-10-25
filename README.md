@@ -4,7 +4,7 @@ Computes FAO-56 Penman-Monteith reference evapotranspiration (ETo), single crop
 coefficient crop evapotranspiration (ETc = Kc × ETo), effective rainfall and net
 irrigation requirement (mm, m³, m³/da, m³/ha) for polygon or point layers.
 
-**Status:** v0.0.7 – calculation core and a QGIS Processing algorithm; no dialog yet.
+**Status:** v0.0.8 – calculation core and a QGIS Processing algorithm; no dialog yet.
 
 ## Layout
 
@@ -34,7 +34,9 @@ crop name and planting date from fields (or uses the defaults), takes stage
 lengths from four fields or from an FAO-56 Table 11 example matching a region
 keyword, downloads NASA POWER daily data and writes ETo, ETc, P, Pe, net
 irrigation (mm, m³, m³/da, m³/ha), peak dekad, missing days and a status
-message. Optional CSV outputs: daily series and dekad totals.
+message. The result layer is styled by net irrigation (mm, blue classes; grey =
+no value, see `status`); in a GeoPackage the style is saved as default.
+Optional CSV outputs: daily series and dekad totals.
 
 Sample data: `sample_data/tekirdag_fields.gpkg` – four fields near Tekirdağ
 (UTM 35N) with `crop` and `planted` fields (maize, sunflower, tomato, winter

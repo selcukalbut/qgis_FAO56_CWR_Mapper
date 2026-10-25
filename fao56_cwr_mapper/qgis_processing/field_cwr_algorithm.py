@@ -36,6 +36,7 @@ from .. import pipeline
 from ..climate_sources.nasa_power import ATTRIBUTION
 from ..core import crop_table, field_balance, stage_table
 from . import network
+from .styling import NirStylePostProcessor
 
 WGS84 = QgsCoordinateReferenceSystem("EPSG:4326")
 NIR_PERIODS = [field_balance.NIR_DEKAD, field_balance.NIR_DAILY]
@@ -307,6 +308,9 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                 dekad_rows.append([feat.id()] + [_csv(p[k]) for k in PERIOD_COLUMNS[1:]])
             feedback.setProgress(100.0 * (i + 1) / total)
 
+        if context.willLoadLayerOnCompletion(dest_id):
+            context.layerToLoadOnCompletionDetails(dest_id).setPostProcessor(
+                NirStylePostProcessor.create())
         outputs = {self.OUTPUT: dest_id}
         for key, columns, rows in ((self.OUTPUT_DAILY, DAILY_COLUMNS, daily_rows),
                                    (self.OUTPUT_DEKAD, PERIOD_COLUMNS, dekad_rows)):

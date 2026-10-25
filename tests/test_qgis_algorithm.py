@@ -65,7 +65,8 @@ class TestFieldAlgorithm(unittest.TestCase):
         context.setEllipsoid("EPSG:7030")
         res, ok = alg.run(base, context, QgsProcessingFeedback())
         self.assertTrue(ok, res)
-        out = context.getMapLayer(res["OUTPUT"]) or context.takeResultLayer(res["OUTPUT"])
+        out = context.getMapLayer(res["OUTPUT"]) or context.takeResultLayer(res["OUTPUT"]) \
+            or QgsVectorLayer(res["OUTPUT"], "result", "ogr")
         return {f["name"]: f for f in out.getFeatures()}, res
 
     def polygon_layer(self):
@@ -142,6 +143,44 @@ class TestFieldAlgorithm(unittest.TestCase):
         self.assertEqual(g["area_m2"], NULL)                            # points have no area
         self.assertEqual(g["NIR_m3"], NULL)
         self.assertGreater(g["NIR_m3_ha"], 0)
+
+    def test_result_style(self):
+        from qgis.core import QgsProcessingOutputLayerDefinition, QgsProject
+        alg = self.Alg()
+        alg.initAlgorithm()
+        context = QgsProcessingContext()
+        context.setProject(QgsProject.instance())
+        out_def = QgsProcessingOutputLayerDefinition("TEMPORARY_OUTPUT", QgsProject.instance())
+        params = {"INPUT": self.polygon_layer(), "OUTPUT": out_def, "USE_CACHE": False,
+                  "CROP_FIELD": "crop", "PLANTING_FIELD": "planted",
+                  "PLANTING_DATE": QDate(2025, 5, 1)}
+        res, ok = alg.run(params, context, QgsProcessingFeedback())
+        self.assertTrue(ok)
+        details = context.layerToLoadOnCompletionDetails(res["OUTPUT"])
+        self.assertIsNotNone(details.postProcessor())
+        layer = context.getMapLayer(res["OUTPUT"])
+        details.postProcessor().postProcessLayer(layer, context, QgsProcessingFeedback())
+
+        r = layer.renderer()
+        self.assertEqual(r.type(), "graduatedSymbol")
+        labels = [rg.label() for rg in r.ranges()]
+        self.assertEqual(labels[-1], "no value (see status)")          # typo/garlic rows stay visible
+        self.assertTrue(all(l.endswith(" mm") for l in labels[:-1]))
+        values = [f["NIR_mm"] for f in layer.getFeatures() if f["NIR_mm"] != NULL]
+        self.assertLessEqual(r.ranges()[0].lowerValue(), min(values))
+        self.assertGreaterEqual(r.ranges()[-2].upperValue(), max(values))
+        colors = [rg.symbol().color().name() for rg in r.ranges()[:-1]]
+        self.assertEqual(colors[0], "#eff3ff")                        # light = low requirement
+
+    def test_style_saved_in_geopackage(self):
+        from fao56_cwr_mapper.qgis_processing.styling import apply_nir_style
+        path = os.path.join(tempfile.mkdtemp(), "result.gpkg")
+        _, res = self.run_alg(self.polygon_layer(), OUTPUT=path, CROP_FIELD="crop",
+                              PLANTING_FIELD="planted", PLANTING_DATE=QDate(2025, 5, 1))
+        layer = QgsVectorLayer(res["OUTPUT"], "result", "ogr")
+        self.assertTrue(apply_nir_style(layer))
+        reopened = QgsVectorLayer(res["OUTPUT"], "again", "ogr")     # loads the default style
+        self.assertEqual(reopened.renderer().type(), "graduatedSymbol")
 
     def test_provider_registration(self):
         from fao56_cwr_mapper.qgis_processing.provider import FAO56Provider
