@@ -4,7 +4,7 @@ Computes FAO-56 Penman-Monteith reference evapotranspiration (ETo), single crop
 coefficient crop evapotranspiration (ETc = Kc × ETo), effective rainfall and net
 irrigation requirement (mm, m³, m³/da, m³/ha) for polygon or point layers.
 
-**Status:** v0.0.1 – calculation core only, no user interface yet.
+**Status:** v0.0.6 – calculation core and a QGIS Processing algorithm; no dialog yet.
 
 ## Layout
 
@@ -17,12 +17,23 @@ fao56_cwr_mapper/        QGIS plugin package (zip this folder to install)
   core/stage_table.py    Stage lengths from FAO-56 Table 11, Table 11/12 crop mapping
   core/field_balance.py  ETc, effective rainfall, net irrigation per day/dekad/month/season
   pipeline.py            Point chain: NASA POWER -> ETo -> ETc -> net irrigation
+  qgis_processing/       Processing provider and field algorithm (QGIS network stack)
   climate_sources/       NASA POWER daily point client (with local cache)
   data/                  FAO-56 Tables 11/12 as CSV, Kc range variants, crop mapping
 tests/                   Unit tests against FAO-56 worked examples (no QGIS needed)
 tools/                   Reproducible extraction of FAO-56 tables + documented corrections
 docs/                    Planning draft and table review list (Turkish)
 ```
+
+## Using it in QGIS
+
+Processing Toolbox → *FAO-56 Crop Water* → *Field crop water and net irrigation
+requirement*. Input: polygon (fields) or point layer. Per feature it reads the
+crop name and planting date from fields (or uses the defaults), takes stage
+lengths from four fields or from an FAO-56 Table 11 example matching a region
+keyword, downloads NASA POWER daily data and writes ETo, ETc, P, Pe, net
+irrigation (mm, m³, m³/da, m³/ha), peak dekad, missing days and a status
+message. Optional CSV outputs: daily series and dekad totals.
 
 ## Running the tests
 
@@ -31,6 +42,11 @@ python3 -m unittest discover -s tests -t . -v
 ```
 
 The core uses only the Python standard library, so tests run with any Python ≥ 3.9.
+The QGIS algorithm test is skipped there; run it with the QGIS interpreter (macOS):
+
+```bash
+PYTHONPATH=/Applications/QGIS.app/Contents/Resources/qgis/python/plugins:. /Applications/QGIS.app/Contents/MacOS/python -m unittest tests.test_qgis_algorithm -v
+```
 
 ## Verified against FAO-56
 
