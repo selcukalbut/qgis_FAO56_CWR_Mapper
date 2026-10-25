@@ -3,3 +3,7 @@ __pycache__/
 .DS_Store
 *.zip
 .cache/
+
+# Reference copies of FAO-56 (copyrighted, kept local only)
+docs/Fao56.pdf
+Table_11.rtf

@@ -1,0 +1,11 @@
+table,crop,key,column,value,reason
+11,Egg plant,1,total,130,"Printed book (Table 11) prints totals of rows 1-2 as '130\14' / '0' (typesetting split of 130 and 140); stages sum to 130"
+11,Egg plant,2,total,140,"Printed book (Table 11) prints totals of rows 1-2 as '130\14' / '0' (typesetting split of 130 and 140); stages sum to 140"
+11,Rice,2,l_dev,30,"HTML '30.'; printed book shows 30"
+11,Olives,1,total,270,"HTML '2705'; printed book shows 270 with footnote 5"
+11,Maize (sweet),4,l_late,10,"HTML '103'; printed book shows 10 with footnote 3"
+11,Maize (sweet),4,remark,,"FAO-56 original (checked in book): stages sum to 100 but total printed 110; stage lengths used. Footnote 3: late season ~35 days if grain matures and dries"
+11,"Green gram, cowpeas",1,remark,,"FAO-56 original (checked in book): stages sum to 100 but total printed 110; stage lengths used"
+11,Sesame,1,remark,,"FAO-56 original (checked in book): stages sum to 110 but total printed 100; stage lengths used"
+11,Sorghum,1,remark,,"FAO-56 original (checked in book): stages sum to 125 but total printed 130; stage lengths used"
+11,Sorghum,2,remark,,"FAO-56 original (checked in book): stages sum to 130 but total printed 140; stage lengths used"
