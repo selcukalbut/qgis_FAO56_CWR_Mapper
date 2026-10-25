@@ -37,7 +37,7 @@ The core uses only the Python standard library, so tests run with any Python ≥
 
 ## License
 
-GPL v2 or later – see `fao56_cwr_mapper/LICENSE`.
+GPL v2 or later – see `LICENSE` (a copy is shipped inside the plugin package).
 
 Reference: Allen, R.G., Pereira, L.S., Raes, D., Smith, M. (1998). *Crop
 evapotranspiration – Guidelines for computing crop water requirements.* FAO
