@@ -4,7 +4,7 @@ Computes FAO-56 Penman-Monteith reference evapotranspiration (ETo), single crop
 coefficient crop evapotranspiration (ETc = Kc × ETo), effective rainfall and net
 irrigation requirement (mm, m³, m³/da, m³/ha) for polygon or point layers.
 
-**Status:** v0.0.10 – calculation core and a QGIS Processing algorithm; no dialog yet.
+**Status:** v0.0.11 – calculation core and a QGIS Processing algorithm; no dialog yet.
 
 ## Layout
 
@@ -16,6 +16,7 @@ fao56_cwr_mapper/        QGIS plugin package (zip this folder to install)
   core/crop_table.py     Kc table from FAO-56 Table 12 (book-checked), user CSV, overrides
   core/stage_table.py    Stage lengths from FAO-56 Table 11, Table 11/12 crop mapping
   core/field_balance.py  ETc, effective rainfall, net irrigation per day/dekad/month/season
+  core/report.py         Run report (text/HTML): method, data source, results, warnings
   pipeline.py            Point chain: NASA POWER -> ETo -> ETc -> net irrigation
   qgis_processing/       Processing provider and field algorithm (QGIS network stack)
   climate_sources/       NASA POWER daily point client (with local cache)
@@ -36,7 +37,9 @@ keyword (one for all features or a per-feature region field), downloads NASA POW
 irrigation (mm, m³, m³/da, m³/ha), peak dekad, missing days and a status
 message. The result layer is styled by net irrigation (mm, blue classes; grey =
 no value, see `status`); in a GeoPackage the style is saved as default.
-Optional CSV outputs: daily series and dekad totals.
+Optional outputs: daily series and dekad totals (CSV) and a run report (HTML or
+text) with inputs, method, data source and attribution, per-field results,
+warnings and limitations (example: `sample_data/tekirdag_report.html`).
 
 Sample data: `sample_data/tekirdag_fields.gpkg` – four fields near Tekirdağ
 (UTM 35N) with `crop`, `planted` and `region` fields (maize, sunflower, tomato,

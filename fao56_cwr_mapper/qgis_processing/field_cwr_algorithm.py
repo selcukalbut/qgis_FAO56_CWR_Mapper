@@ -6,6 +6,7 @@ from datetime import date
 
 from qgis.core import (
     NULL,
+    Qgis,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
     QgsDistanceArea,
@@ -34,7 +35,7 @@ from qgis.PyQt.QtCore import QDate, QDateTime, QVariant
 
 from .. import pipeline
 from ..climate_sources.nasa_power import ATTRIBUTION
-from ..core import crop_table, field_balance, stage_table
+from ..core import crop_table, field_balance, report, stage_table
 from . import network
 from .styling import NirStylePostProcessor
 
@@ -110,6 +111,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
     OUTPUT = "OUTPUT"
     OUTPUT_DAILY = "OUTPUT_DAILY"
     OUTPUT_DEKAD = "OUTPUT_DEKAD"
+    OUTPUT_REPORT = "OUTPUT_REPORT"
 
     # replaced in tests to run without network
     fetcher = staticmethod(network.qgis_fetcher)
@@ -214,6 +216,10 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         self.addParameter(QgsProcessingParameterFileDestination(
             self.OUTPUT_DEKAD, "Dekad totals (CSV)", fileFilter="CSV files (*.csv)",
             optional=True, createByDefault=False))
+        self.addParameter(QgsProcessingParameterFileDestination(
+            self.OUTPUT_REPORT, "Run report (method, data source, results, warnings)",
+            fileFilter="HTML files (*.html);;Text files (*.txt)", optional=True,
+            createByDefault=False))
 
     # --- helpers ------------------------------------------------------------
 
@@ -325,7 +331,8 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         da.setEllipsoid(context.ellipsoid() or "EPSG:7030")
         is_polygon = QgsWkbTypes.geometryType(source.wkbType()) == QgsWkbTypes.PolygonGeometry
 
-        daily_rows, dekad_rows, failures = [], [], 0
+        daily_rows, dekad_rows, report_rows, failures = [], [], [], 0
+        label_field = "name" if source.fields().indexOf("name") >= 0 else None
         total = source.featureCount() or 1
         for i, feat in enumerate(source.getFeatures()):
             if feedback.isCanceled():
@@ -350,6 +357,9 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                                    round(d["Kc"], 3)] + [_csv(d[k]) for k in ("ETo", "ETc", "P", "Pe", "NIR")])
             for p in result.get("_dekad", []):
                 dekad_rows.append([feat.id()] + [_csv(p[k]) for k in PERIOD_COLUMNS[1:]])
+            label = feat[label_field] if label_field else None
+            report_rows.append(_report_row(
+                str(label) if label not in (None, NULL) else "fid {}".format(feat.id()), result))
             feedback.setProgress(100.0 * (i + 1) / total)
 
         if context.willLoadLayerOnCompletion(dest_id):
@@ -365,6 +375,23 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                     w.writerow(columns)
                     w.writerows(rows)
                 outputs[key] = path
+        path = self.parameterAsFileOutput(parameters, self.OUTPUT_REPORT, context)
+        if path:
+            meta = {"layer": source.sourceName(), "crs": source.sourceCrs().authid(),
+                    "ellipsoid": da.ellipsoid(), "qgis_version": Qgis.version()}
+            settings = {
+                "pe_fraction": pe_fraction, "nir_period": nir_period, "efficiency": efficiency,
+                "user_kc_csv": user_csv,
+                "crop_source": ("field '{}' (empty values: {})".format(crop_field, default_crop.name)
+                                if crop_field else "{} for all features".format(default_crop.name)),
+                "planting_source": ("field '{}' (empty values: {})".format(plant_field, default_plant)
+                                    if plant_field else "{} for all features".format(default_plant)),
+                "stage_source": ("fields " + ", ".join(l_fields) if all(l_fields) else
+                                 "FAO-56 Table 11, region keyword '{}'{}".format(
+                                     region[0], ", per-feature field '{}'".format(region[1])
+                                     if region[1] else "")),
+            }
+            outputs[self.OUTPUT_REPORT] = report.write_report(path, meta, settings, report_rows)
         if failures:
             feedback.pushWarning("{} feature(s) failed; see the 'status' field.".format(failures))
         return outputs
@@ -415,8 +442,19 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             "miss_days": s["missing_days"], "nir_period": s["nir_period"],
             "pe_frac": pe_fraction, "elev_m": _round(s["elevation_m"]),
             "clim_src": s["climate_source"], "status": status[:1000],
-            "_daily": r["daily"], "_dekad": r["dekad"],
+            "_daily": r["daily"], "_dekad": r["dekad"], "_summary": s,
         }
+
+
+def _report_row(label, result):
+    s = result.get("_summary")
+    row = {"feature": label, "status": result.get("status", "error")}
+    if s:
+        row.update({"crop": s["crop"], "stage": s["stage_option"],
+                    "season_start": s["season_start"], "season_end": s["season_end"],
+                    "ETo": s["ETo_mm"], "ETc": s["ETc_mm"], "P": s["P_mm"], "Pe": s["Pe_mm"],
+                    "NIR": s["NIR_mm"], "NIR_m3": s.get("NIR_m3"), "area_m2": s.get("area_m2")})
+    return row
 
 
 def _csv(v):

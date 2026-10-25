@@ -176,6 +176,22 @@ class TestFieldAlgorithm(unittest.TestCase):
         self.assertEqual(feats["Field A"]["season_beg"], QDate(2025, 4, 20))
         self.assertTrue(all(f["status"] == "ok" for f in feats.values()))
 
+    def test_report_output(self):
+        tmp = tempfile.mkdtemp()
+        for name in ("report.html", "report.txt"):
+            path = os.path.join(tmp, name)
+            _, res = self.run_alg(self.polygon_layer(), OUTPUT_REPORT=path,
+                                  PLANTING_DATE=QDate(2025, 5, 1))
+            self.assertEqual(res["OUTPUT_REPORT"], path)
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+            with self.subTest(report=name):
+                self.assertIn("tomato_default", text)                 # labels from the 'name' field
+                self.assertIn("Tomatoe", text)                        # failing feature listed
+                self.assertIn("field 'crop'", text)
+                self.assertIn("EPSG:32635", text)
+                self.assertIn("No soil water storage", text)
+
     def test_wrong_planting_field_stops_early(self):
         alg = self.Alg()
         alg.initAlgorithm()
