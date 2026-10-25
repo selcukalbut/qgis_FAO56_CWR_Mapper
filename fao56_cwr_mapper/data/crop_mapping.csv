@@ -1,0 +1,84 @@
+kc_crop,kc_variant,stage_crop,stage_variants,basis
+Broccoli,,Broccoli,,same crop
+Broccoli,,Crucifers,,"Table 11 footnote 1: crucifers include cabbage, cauliflower, broccoli and Brussel sprouts"
+Brussel Sprouts,,Crucifers,,Table 11 footnote 1
+Cabbage,,Cabbage,,same crop
+Cabbage,,Crucifers,,Table 11 footnote 1
+Carrots,,Carrots,,same crop
+Cauliflower,,Cauliflower,,same crop
+Cauliflower,,Crucifers,,Table 11 footnote 1
+Celery,,Celery,,same crop
+Lettuce,,Lettuce,,same crop
+Onions,dry,Onion (dry),,same crop
+Onions,green,Onion (green),,same crop
+Onions,seed,Onion (seed),,same crop
+Spinach,,Spinach,,same crop
+Radish,,Radish,,same crop
+Egg Plant,,Egg plant,,same crop
+Sweet Peppers (bell),,Sweet peppers (bell),,same crop
+Tomato,,Tomato,,same crop
+Cantaloupe,,Cantaloupe,,same crop
+Cucumber,,Cucumber,,same crop
+"Pumpkin, Winter Squash",,"Pumpkin, Winter squash",,same crop
+"Squash, Zucchini",,"Squash, Zucchini",,same crop
+Sweet Melons,,Sweet melons,,same crop
+Watermelon,,Water melons,,same crop
+"Beets, table",,"Beets, table",,same crop
+Cassava,year 1,Cassava: year 1,,same crop
+Cassava,year 2,Cassava: year 2,,same crop
+Potato,,Potato,,same crop
+Sweet Potato,,Sweet potato,,same crop
+Sugar Beet,,Sugarbeet,,same crop
+"Beans, green",,Beans (green),,same crop
+"Beans, dry and Pulses",,Beans (dry),,same crop
+Fababean (broad bean),Fresh,"Faba bean, broad bean",(none);green,unlabelled rows and the 'green' row
+Fababean (broad bean),Dry/Seed,"Faba bean, broad bean",(none);dry,unlabelled rows and the 'dry' row
+Green Gram and Cowpeas,,"Green gram, cowpeas",,same crop
+Groundnut (Peanut),,Groundnut,,same crop
+Lentil,,Lentil,,same crop
+Peas,,Peas,,same crop
+Soybeans,,Soybeans,,same crop
+Artichokes,,Artichoke,,same crop
+Asparagus,,Asparagus,,same crop
+Cotton,,Cotton,,same crop
+Flax,,Flax,,same crop
+Castorbean (Ricinus),,Castor beans,,same crop
+Safflower,,Safflower,,same crop
+Sesame,,Sesame,,same crop
+Sunflower,,Sunflower,,same crop
+Barley,,Barley/Oats/Wheat,,"Table 11 groups barley, oats and wheat"
+Barley,,Grains (small),,small grain
+Oats,,Barley/Oats/Wheat,,"Table 11 groups barley, oats and wheat"
+Oats,,Grains (small),,small grain
+Spring Wheat,,Barley/Oats/Wheat,,"Table 11 groups barley, oats and wheat"
+Spring Wheat,,Grains (small),,small grain
+Winter Wheat,,Winter Wheat,,same crop
+"Maize, Field (grain) (field corn)",,Maize (grain),,same crop
+"Maize, Sweet (sweet corn)",,Maize (sweet),,same crop
+Millet,,Millet,,same crop
+Sorghum,,Sorghum,,same crop
+Rice,,Rice,,same crop
+Alfalfa Hay,individual cutting periods,Alfalfa 1st cutting cycle,,cutting cycle lengths
+Alfalfa Hay,individual cutting periods,"Alfalfa, other cutting cycles",,cutting cycle lengths
+Bermuda hay,averaged cutting effects,Bermuda for hay (several cuttings),,same crop
+Bermuda hay,Spring crop for seed,Bermuda for seed,,same crop
+Sudan Grass hay (annual),individual cutting periods,"Sudan, 1st cutting cycle",,cutting cycle lengths
+Sudan Grass hay (annual),individual cutting periods,"Sudan, other cutting cycles",,cutting cycle lengths
+Sugar Cane,,"Sugarcane, virgin",,same crop
+Sugar Cane,,"Sugarcane, ratoon",,same crop
+Banana,1st year,"Banana, 1st yr",,same crop
+Banana,2nd year,"Banana, 2nd yr",,same crop
+Pineapple,,Pineapple,,same crop
+Grapes,,Grapes,,same crop
+Hops,,Hops,,same crop
+"Citrus, no ground cover",,Citrus,,same crop
+"Citrus, with active ground cover or weeds",,Citrus,,same crop
+"Almonds, no ground cover",,Deciduous Orchard,,deciduous fruit/nut tree
+"Apples, Cherries, Pears",,Deciduous Orchard,,deciduous fruit tree
+"Apricots, Peaches, Stone Fruit",,Deciduous Orchard,,deciduous fruit tree
+Olives (40 to 60% ground coverage by canopy),,Olives,,same crop
+"Pistachios, no ground cover",,Pistachios,,same crop
+Walnut Orchard,,Walnuts,,same crop
+"Cattails, Bulrushes, killing frost",,"Wetlands (Cattails, Bulrush)",,same vegetation
+"Cattails, Bulrushes, no frost",,"Wetlands (Cattails, Bulrush)",,same vegetation
+"Short Veg., no frost",,Wetlands (short veg.),,same vegetation

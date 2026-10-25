@@ -43,7 +43,7 @@ tutuyor: Carrots orta 30 (100) · Spinach 15→60, 25→70 · Sweet peppers
 başlangıç 30 (125) · Potato 30→115, 45→130 · Soybeans gelişme 35 (140) ·
 Maize sweet orta 30 (90).
 
-Öneri: her seçenek ayrı satır olsun; toplamla tutan seçenek varsayılan.
+Uygulandı ☑: her seçenek ayrı satır (option a / b, `core/stage_table.py`); toplamla tutan seçenek `total_matches` ile işaretli.
 
 ## T12. Tablo 12 – basılı kitapla karşılaştırma (tamamlandı)
 
@@ -81,8 +81,19 @@ Sorghum grain mid 1.00–1.10 · Rotated grazing mid 0.85–1.05 · Sisal mid/en
 Open Water (2 satır): Kc_ini yok (değerler kitapla düzeltildi, bkz. T12-3).
 Bitki sulama hesabıyla ilgisi olmadığından eklentideki bitki listesine alınmasın.
 
-## E. Sonraki adım (karar sonrası)
+## E. Tablo 11 ↔ Tablo 12 bitki adı eşlemesi ☑
 
-Tablo 11 ve 12'de bitki adları farklı (ör. "Egg plant" / "Egg Plant",
-"Sugarbeet" / "Sugar Beet", "Barley/Oats/Wheat"). Eklentinin bitki listesi
-için iki tablo arasında açık bir eşleme dosyası gerekecek.
+`fao56_cwr_mapper/data/crop_mapping.csv` (83 kural, her biri gerekçeli). Yorum
+içeren eşlemeler (kontrol önerilir):
+
+- Broccoli, Cabbage, Cauliflower, Brussel Sprouts → ayrıca "Crucifers" (Tablo 11 dipnot 1)
+- Barley, Oats, Spring Wheat → "Barley/Oats/Wheat" ve "Grains (small)"
+- Fababean Fresh → etiketsiz satırlar + "green"; Dry/Seed → etiketsiz satırlar + "dry"
+- Almonds, Apples/Cherries/Pears, Apricots/Peaches/Stone Fruit → "Deciduous Orchard"
+- Alfalfa ve Sudan "individual cutting periods" → biçim döngüsü satırları
+- Citrus (her iki örtü durumu) → "Citrus"
+
+Tablo 11'deki her bitki en az bir Kc bitkisine bağlı. Tablo 11'de karşılığı
+olmayan 34 Kc bitkisi (sarımsak, nane, çilek, çay, kahve, yonca "averaged
+cutting effects" vb.) için evre süreleri kullanıcı tarafından girilir
+(`load_user_stage_csv` veya katman alanları).

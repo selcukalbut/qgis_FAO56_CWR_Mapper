@@ -56,7 +56,9 @@ def extract_table12(rows, corrections, review):
     for cells in rows[1:]:
         cells = (cells + [""] * 6)[:6]
         name, notes = split_footnotes(cells[0])
-        variant = cells[1].lstrip("- ").strip()
+        variant, variant_notes = split_footnotes(cells[1])
+        variant = variant.lstrip("- ").strip()
+        notes += variant_notes
         vals = [split_footnotes(c) for c in cells[2:6]]
         notes += [n for _, ns in vals for n in ns]
         kc_ini, kc_mid, kc_end, height = (v for v, _ in vals)
@@ -116,7 +118,7 @@ def extract_table11(rows, corrections, review):
                 crop, n = crop.split(":")[0] + ": " + first, 0
             elif first:
                 crop, n = first, 0
-            variant = cells[1].lstrip("- ").strip()
+            variant = split_footnotes(cells[1])[0].lstrip("- ").strip()
             stages = cells[2:7]
             plant, region = (cells + ["", "", "", ""])[7:9]
         n += 1
