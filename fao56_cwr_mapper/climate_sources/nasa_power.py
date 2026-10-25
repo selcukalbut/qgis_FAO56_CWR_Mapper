@@ -57,12 +57,13 @@ class DailyClimate:
 class PowerSeries:
     """Parsed POWER response for one point."""
 
-    def __init__(self, latitude, longitude, elevation, sources, days):
+    def __init__(self, latitude, longitude, elevation, sources, days, api_version=None):
         self.latitude = latitude
         self.longitude = longitude
         self.elevation = elevation   # POWER grid cell elevation [m]
         self.sources = sources       # e.g. ["MERRA2", "SYN1DEG", "POWER"]
         self.days = days             # list of DailyClimate, date order
+        self.api_version = api_version   # e.g. "v2.10.1"
 
     def missing_days(self):
         """Days on which any variable needed for ETo is missing."""
@@ -122,7 +123,8 @@ def parse_response(data):
             rs=value("ALLSKY_SFC_SW_DWN", key, rad_factor),
             precip=value("PRECTOTCORR", key),
         ))
-    return PowerSeries(lat, lon, elevation, header.get("sources", []), days)
+    api_version = (header.get("api") or {}).get("version")
+    return PowerSeries(lat, lon, elevation, header.get("sources", []), days, api_version)
 
 
 def urllib_fetcher(url, timeout=60):

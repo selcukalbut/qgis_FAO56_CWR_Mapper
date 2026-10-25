@@ -43,6 +43,8 @@ class TestParse(unittest.TestCase):
     def test_real_response(self):
         s = np_.parse_response(load_fixture())
         self.assertEqual((s.latitude, s.longitude, s.elevation), (40.98, 27.51, 98.23))
+        self.assertEqual(s.api_version, "v2.10.1")
+        self.assertEqual(s.sources, ["MERRA2", "SYN1DEG", "POWER"])
         self.assertEqual(len(s.days), 5)
         d = s.days[0]
         self.assertEqual(d.day, date(2025, 7, 1))

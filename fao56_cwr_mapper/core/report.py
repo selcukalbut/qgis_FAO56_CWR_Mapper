@@ -75,14 +75,22 @@ def _fmt(v, nd=1):
     return str(v)
 
 
+NEAR_REAL_TIME = ("GEOSIT", "FLASHFLUX")
+
 RESULT_COLUMNS = [("feature", "Field"), ("crop", "Crop"), ("season", "Season"),
+                  ("stage", "Stage lengths (ini/dev/mid/late)"),
                   ("ETo", "ETo mm"), ("ETc", "ETc mm"), ("P", "P mm"), ("Pe", "Pe mm"),
                   ("NIR", "NIR mm"), ("NIR_m3", "NIR m3"), ("status", "Status")]
 
 
 def _result_cells(r):
     season = "{} - {}".format(r["season_start"], r["season_end"]) if r.get("season_start") else "-"
-    return [r["feature"], r.get("crop") or "-", season] + \
+    stage = "-"
+    if r.get("stage_lengths"):
+        stage = "{} d".format("/".join(str(x) for x in r["stage_lengths"]))
+        if r.get("stage_example"):
+            stage = "{}: {}".format(r["stage_example"], stage)
+    return [r["feature"], r.get("crop") or "-", season, stage] + \
         [_fmt(r.get(k)) for k in ("ETo", "ETc", "P", "Pe", "NIR")] + \
         [_fmt(r.get("NIR_m3"), 0), "ok" if r["status"] == "ok" else r["status"].split(":")[0]]
 
@@ -117,12 +125,21 @@ def _sections(meta, settings, results):
         ("Application efficiency", "{:.2f}".format(settings["efficiency"]) if settings.get("efficiency") else "not used"),
         ("User Kc table", settings.get("user_kc_csv") or "none"),
     ]
+    products = sorted({p for r in results for p in r.get("climate_sources") or []})
+    versions = sorted({r["api_version"] for r in results if r.get("api_version")})
     data = [
         ("Source", "NASA POWER daily point API, community AG"),
+        ("API version", ", ".join(versions) or "-"),
+        ("POWER data products", ", ".join(products) or "-"),
         ("Seasons covered", "{} to {}".format(min(starts), max(ends)) if starts else "-"),
         ("Run date", meta.get("run_time", "-")),
         ("Attribution", ATTRIBUTION),
     ]
+    if any(p in NEAR_REAL_TIME for p in products):
+        data.insert(4, ("Note", "Near-real-time products ({}) were used for recent days; POWER "
+                                "replaces them later, so repeating the run can give slightly "
+                                "different values.".format(", ".join(p for p in products
+                                                                     if p in NEAR_REAL_TIME))))
     summary = [
         ("Total area", "{} ha".format(_fmt(t["area_ha"], 2)) if t["area_ha"] else "-"),
         ("Total net irrigation volume", "{} m3".format(_fmt(t["volume_m3"], 0)) if t["volume_m3"] else "-"),

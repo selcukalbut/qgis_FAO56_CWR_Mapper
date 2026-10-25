@@ -35,6 +35,7 @@ def run_field(latitude, longitude, kc_crop, stage, planting_date, area_m2=None,
         "latitude": latitude, "longitude": longitude, "elevation_m": z,
         "climate_source": "NASA POWER daily ({})".format(", ".join(series.sources)),
         "climate_grid_elevation_m": series.elevation,
+        "climate_sources": list(series.sources), "climate_api_version": series.api_version,
         "attribution": nasa_power.ATTRIBUTION,
     })
     return result

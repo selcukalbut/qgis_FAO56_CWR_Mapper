@@ -16,11 +16,15 @@ ROWS = [
     {"feature": "Field A", "status": "ok", "crop": "Tomato", "stage": "x",
      "season_start": date(2025, 5, 1), "season_end": date(2025, 9, 22),
      "ETo": 926.6, "ETc": 888.1, "P": 73.5, "Pe": 58.8, "NIR": 829.3,
-     "NIR_m3": 14939.4, "area_m2": 18013.6},
+     "NIR_m3": 14939.4, "area_m2": 18013.6, "stage_example": "Mediterranean, April/May",
+     "stage_lengths": (30, 40, 45, 30), "climate_sources": ["MERRA2", "SYN1DEG", "POWER"],
+     "api_version": "v2.10.1"},
     {"feature": "Field B", "status": "ok", "crop": "Sunflower - irrigated", "stage": "y",
      "season_start": date(2025, 4, 15), "season_end": date(2025, 8, 22),
      "ETo": 812.8, "ETc": 716.5, "P": 67.9, "Pe": 54.4, "NIR": 663.4,
-     "NIR_m3": 29874.1, "area_m2": 45034.1},
+     "NIR_m3": 29874.1, "area_m2": 45034.1, "stage_example": "field attributes",
+     "stage_lengths": (25, 35, 45, 25), "climate_sources": ["GEOSIT", "FLASHFLUX", "POWER"],
+     "api_version": "v2.10.1"},
     {"feature": "Field <C>", "status": "error: crop 'Tomatoe' not found"},
 ]
 
@@ -43,6 +47,16 @@ class TestReport(unittest.TestCase):
             with self.subTest(part=part):
                 self.assertIn(part, text)
         self.assertIn("44 814 m3", text)
+
+    def test_stage_and_sources(self):
+        text = report.build_text(META, SETTINGS, ROWS)
+        self.assertIn("Mediterranean, April/May: 30/40/45/30 d", text)
+        self.assertIn("field attributes: 25/35/45/25 d", text)
+        self.assertIn("v2.10.1", text)
+        self.assertIn("FLASHFLUX, GEOSIT, MERRA2, POWER, SYN1DEG", text)
+        self.assertIn("Near-real-time products (FLASHFLUX, GEOSIT)", text)
+        dry = [dict(r, climate_sources=["MERRA2", "POWER"]) for r in ROWS[:2]]
+        self.assertNotIn("Near-real-time", report.build_text(META, SETTINGS, dry))
 
     def test_daily_mode_and_efficiency(self):
         text = report.build_text(META, dict(SETTINGS, nir_period="daily", efficiency=0.75), ROWS)

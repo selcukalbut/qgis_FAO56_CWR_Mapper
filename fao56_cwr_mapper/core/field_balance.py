@@ -99,6 +99,9 @@ def field_water_balance(eto_rows, kc_crop, stage, planting_date, area_m2=None,
         "peak_dekad_NIR_mm": peak["NIR"] if peak else None,
         "missing_days": sum(d["missing"] for d in daily),
         "crop": kc_crop.name, "stage_option": stage.label,
+        "stage_lengths": stage.lengths,
+        "stage_example": ", ".join(p for p in (stage.region, stage.plant_date) if p)
+                         + (" (option {})".format(stage.option) if stage.option else ""),
     }
     summary.update(volumes(nir_total, area_m2))
     if efficiency is not None:

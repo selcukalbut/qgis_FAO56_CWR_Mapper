@@ -99,6 +99,9 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(s["missing_days"], 0)
         self.assertEqual(s["elevation_m"], 98.23)                   # POWER grid elevation
         self.assertIn("MERRA2", s["climate_source"])
+        self.assertEqual(s["climate_api_version"], "v2.10.1")
+        self.assertEqual(s["climate_sources"], ["MERRA2", "SYN1DEG", "POWER"])
+        self.assertEqual(s["stage_lengths"], (1, 1, 2, 1))
         self.assertAlmostEqual(s["ETc_mm"], sum(d["Kc"] * d["ETo"] for d in r["daily"]))
         self.assertAlmostEqual(s["NIR_mm"], s["ETc_mm"])           # no rain 1-5 July
         self.assertAlmostEqual(s["NIR_m3"], s["NIR_mm"])            # 1000 m2 = 1 da

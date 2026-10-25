@@ -451,6 +451,9 @@ def _report_row(label, result):
     row = {"feature": label, "status": result.get("status", "error")}
     if s:
         row.update({"crop": s["crop"], "stage": s["stage_option"],
+                    "stage_example": s.get("stage_example"), "stage_lengths": s.get("stage_lengths"),
+                    "climate_sources": s.get("climate_sources"),
+                    "api_version": s.get("climate_api_version"),
                     "season_start": s["season_start"], "season_end": s["season_end"],
                     "ETo": s["ETo_mm"], "ETc": s["ETc_mm"], "P": s["P_mm"], "Pe": s["Pe_mm"],
                     "NIR": s["NIR_mm"], "NIR_m3": s.get("NIR_m3"), "area_m2": s.get("area_m2")})
