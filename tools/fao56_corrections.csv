@@ -9,3 +9,6 @@ table,crop,key,column,value,reason
 11,Sesame,1,remark,,"FAO-56 original (checked in book): stages sum to 110 but total printed 100; stage lengths used"
 11,Sorghum,1,remark,,"FAO-56 original (checked in book): stages sum to 125 but total printed 130; stage lengths used"
 11,Sorghum,2,remark,,"FAO-56 original (checked in book): stages sum to 130 but total printed 140; stage lengths used"
+12,"Open Water, > 5 m depth, clear of turbidity, temperate climate",,kc_mid,0.65,"HTML '0.6525'; printed book shows 0.65 with footnote 25"
+12,"Open Water, > 5 m depth, clear of turbidity, temperate climate",,kc_end,1.25,"HTML '1.2525'; printed book shows 1.25 with footnote 25"
+12,Walnut Orchard,,kc_end,0.65,"HTML '0.6518'; printed book shows 0.65 with footnote 18"

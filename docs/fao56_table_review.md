@@ -45,6 +45,22 @@ Maize sweet orta 30 (90).
 
 Öneri: her seçenek ayrı satır olsun; toplamla tutan seçenek varsayılan.
 
+## T12. Tablo 12 – basılı kitapla karşılaştırma (tamamlandı)
+
+Tablo 12'nin tamamı kitabın 110–114. sayfalarıyla (docs/Fao56.pdf, yerel kopya)
+satır satır karşılaştırıldı; Kc ve bitki boyu değerleri HTML ile aynı.
+
+| # | Satır | Kitapta | Sonuç |
+|---|---|---|---|
+| T12-1 ☑ | k. Sugar Cane | grup satırında 0.40 · 1.25 · 0.75, h = 3 | çıkarım betiği grup satırlarını atlıyordu; düzeltildi, satır eklendi |
+| T12-2 ☑ | Walnut Orchard Kc_end | 0.65 + dipnot 18 | HTML'deki "0.6518" → 0.65 |
+| T12-3 ☑ | Open Water (> 5 m) Kc_mid / Kc_end | 0.65 / 1.25 + dipnot 25 | HTML'deki "0.6525" / "1.2525" → 0.65 / 1.25 |
+| T12-4 ☐ | Peas – Dry/Seed Kc_ini | boş; 0.5 yalnızca "Fresh" satırında | şimdilik grup değeri 0.4 kullanılıyor (karar: 0.4 mü, 0.5 mi?) |
+| T12-5 ☑ | Maize, Field Kc_end | "0.60,0.35" (virgül) | HTML'de "0.60-0.35"; anlamı aynı (dipnot 11: iki ayrı durum), aşağıdaki C grubunda |
+
+Kc_ini'si boş olan bitkiler grup satırındaki Kc_ini'yi alır (`kc_ini_from_group = yes`);
+kitabın tablo düzeni de böyle okunmayı gerektiriyor.
+
 ## C. Tablo 12 – aralık olarak verilen Kc değerleri
 
 Dipnotu anlamı belirleyenler (öneri: ayrı varyant satırları):
@@ -62,7 +78,7 @@ Sorghum grain mid 1.00–1.10 · Rotated grazing mid 0.85–1.05 · Sisal mid/en
 
 ## D. Kapsam dışı bırakılması önerilen satırlar
 
-Open Water (2 satır): Kc_ini yok, 0.65 / 1.25 değerlerine dipnot 25 yapışmış.
+Open Water (2 satır): Kc_ini yok (değerler kitapla düzeltildi, bkz. T12-3).
 Bitki sulama hesabıyla ilgisi olmadığından eklentideki bitki listesine alınmasın.
 
 ## E. Sonraki adım (karar sonrası)

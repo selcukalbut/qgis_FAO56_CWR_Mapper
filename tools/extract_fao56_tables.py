@@ -64,7 +64,9 @@ def extract_table12(rows, corrections, review):
         if m:
             group = name
             group_vals = (kc_ini, kc_mid, kc_end)
-            continue
+            if not height:
+                continue
+            name = m.group(2)                # group that is itself a crop (k. Sugar Cane)
         if name:
             crop = name
         if not (kc_mid or kc_end):          # crop header row with variants below
