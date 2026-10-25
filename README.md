@@ -21,6 +21,7 @@ fao56_cwr_mapper/        QGIS plugin package (zip this folder to install)
   climate_sources/       NASA POWER daily point client (with local cache)
   data/                  FAO-56 Tables 11/12 as CSV, Kc range variants, crop mapping
 tests/                   Unit tests against FAO-56 worked examples (no QGIS needed)
+sample_data/             Example field layer (Tekirdağ)
 tools/                   Reproducible extraction of FAO-56 tables + documented corrections
 docs/                    Planning draft and table review list (Turkish)
 ```
@@ -34,6 +35,10 @@ lengths from four fields or from an FAO-56 Table 11 example matching a region
 keyword, downloads NASA POWER daily data and writes ETo, ETc, P, Pe, net
 irrigation (mm, m³, m³/da, m³/ha), peak dekad, missing days and a status
 message. Optional CSV outputs: daily series and dekad totals.
+
+Sample data: `sample_data/tekirdag_fields.gpkg` – four fields near Tekirdağ
+(UTM 35N) with `crop` and `planted` fields (maize, sunflower, tomato, winter
+wheat). Use *Crop name field* = `crop` and *Planting date field* = `planted`.
 
 ## Running the tests
 
