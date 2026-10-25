@@ -11,7 +11,7 @@ from .core import eto_series, field_balance
 
 
 def run_field(latitude, longitude, kc_crop, stage, planting_date, area_m2=None,
-              elevation=None, pe_fraction=0.80, nir_period=field_balance.NIR_DAILY,
+              elevation=None, pe_fraction=0.80, nir_period=field_balance.NIR_DEKAD,
               efficiency=None, fetcher=None, cache_dir=None, today=None):
     """Full chain for one location.
 

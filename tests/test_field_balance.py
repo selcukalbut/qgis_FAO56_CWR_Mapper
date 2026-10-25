@@ -44,12 +44,16 @@ class TestFieldBalance(unittest.TestCase):
     def test_daily_vs_dekad_rain(self):
         # 20 mm on 25 July (mid season, ETc 5 mm/day): Pe = 16 mm
         wet = climate(rain={date(2025, 7, 25): 20.0})
-        daily = fb.field_water_balance(wet, CROP, STAGE, PLANT, today=TODAY)["summary"]
+        daily = fb.field_water_balance(wet, CROP, STAGE, PLANT, nir_period=fb.NIR_DAILY,
+                                       today=TODAY)["summary"]
         dekad = fb.field_water_balance(wet, CROP, STAGE, PLANT, nir_period=fb.NIR_DEKAD,
                                        today=TODAY)["summary"]
+        default = fb.field_water_balance(wet, CROP, STAGE, PLANT, today=TODAY)["summary"]
         self.assertAlmostEqual(daily["Pe_mm"], 16.0)
         self.assertAlmostEqual(daily["NIR_mm"], 145.0)          # only that day's 5 mm offset
         self.assertAlmostEqual(dekad["NIR_mm"], 134.0)          # full 16 mm offset in the dekad
+        self.assertEqual(default["nir_period"], fb.NIR_DEKAD)   # CROPWAT-like default
+        self.assertAlmostEqual(default["NIR_mm"], 134.0)
 
     def test_dekads_and_months(self):
         r = fb.field_water_balance(climate(), CROP, STAGE, PLANT, today=TODAY)

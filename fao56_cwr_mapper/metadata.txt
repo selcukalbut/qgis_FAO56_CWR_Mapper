@@ -14,4 +14,4 @@ homepage=https://github.com/selcukalbut/qgis_FAO56_CWR_Mapper
 repository=https://github.com/selcukalbut/qgis_FAO56_CWR_Mapper
 tracker=https://github.com/selcukalbut/qgis_FAO56_CWR_Mapper/issues
 icon=
-changelog=0.0.5 - Field ETc and net irrigation chain (daily or dekad); 0.0.4 - FAO-56 Table 11 stage lengths and crop mapping; 0.0.3 - FAO-56 Table 12 crop coefficients (book-checked); 0.0.2 - NASA POWER daily client and daily ETo series; 0.0.1 - FAO-56 ETo core and crop coefficient curve
+changelog=0.0.5 - Field ETc and net irrigation chain (dekad by default, daily optional); 0.0.4 - FAO-56 Table 11 stage lengths and crop mapping; 0.0.3 - FAO-56 Table 12 crop coefficients (book-checked); 0.0.2 - NASA POWER daily client and daily ETo series; 0.0.1 - FAO-56 ETo core and crop coefficient curve

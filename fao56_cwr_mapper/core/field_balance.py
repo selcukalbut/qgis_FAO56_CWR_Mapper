@@ -4,11 +4,11 @@ Chain: daily ETo (eto_series) x daily Kc (crop + stage lengths) = ETc;
 effective rainfall Pe from daily rainfall; net irrigation requirement
 NIR = max(0, ETc - Pe), evaluated per day or per dekad.
 
-- "daily" (planning draft v0.1): rain on one day cannot offset demand on
-  another day, so NIR is higher than with any storage.
-- "dekad" (10-day periods, as in CROPWAT): ETc and Pe are summed per dekad
-  before the difference is taken, allowing rain to cover demand within the
-  same dekad.
+- "dekad" (default; 10-day periods, as in CROPWAT): ETc and Pe are summed
+  per dekad before the difference is taken, allowing rain to cover demand
+  within the same dekad.
+- "daily" (option; planning draft v0.1): rain on one day cannot offset demand
+  on another day, so NIR is higher, especially in wet seasons.
 
 Neither includes soil water storage; that is the v0.3 soil water balance.
 Days without climate data are never filled: they are counted, left out of
@@ -42,7 +42,7 @@ def _sum(values):
 
 
 def field_water_balance(eto_rows, kc_crop, stage, planting_date, area_m2=None,
-                        pe_fraction=0.80, nir_period=NIR_DAILY, efficiency=None,
+                        pe_fraction=0.80, nir_period=NIR_DEKAD, efficiency=None,
                         today=None):
     """Daily, dekad, monthly and seasonal crop water and irrigation figures.
 
