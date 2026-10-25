@@ -55,15 +55,15 @@ satır satır karşılaştırıldı; Kc ve bitki boyu değerleri HTML ile aynı.
 | T12-1 ☑ | k. Sugar Cane | grup satırında 0.40 · 1.25 · 0.75, h = 3 | çıkarım betiği grup satırlarını atlıyordu; düzeltildi, satır eklendi |
 | T12-2 ☑ | Walnut Orchard Kc_end | 0.65 + dipnot 18 | HTML'deki "0.6518" → 0.65 |
 | T12-3 ☑ | Open Water (> 5 m) Kc_mid / Kc_end | 0.65 / 1.25 + dipnot 25 | HTML'deki "0.6525" / "1.2525" → 0.65 / 1.25 |
-| T12-4 ☐ | Peas – Dry/Seed Kc_ini | boş; 0.5 yalnızca "Fresh" satırında | şimdilik grup değeri 0.4 kullanılıyor (karar: 0.4 mü, 0.5 mi?) |
+| T12-4 ☑ | Peas – Dry/Seed Kc_ini | boş; 0.5 yalnızca "Fresh" satırında | karar: 0.5 (Fababean gibi iki satıra da), düzeltme dosyasında |
 | T12-5 ☑ | Maize, Field Kc_end | "0.60,0.35" (virgül) | HTML'de "0.60-0.35"; anlamı aynı (dipnot 11: iki ayrı durum), aşağıdaki C grubunda |
 
 Kc_ini'si boş olan bitkiler grup satırındaki Kc_ini'yi alır (`kc_ini_from_group = yes`);
 kitabın tablo düzeni de böyle okunmayı gerektiriyor.
 
-## C. Tablo 12 – aralık olarak verilen Kc değerleri
+## C. Tablo 12 – aralık olarak verilen Kc değerleri (karar verildi ☑)
 
-Dipnotu anlamı belirleyenler (öneri: ayrı varyant satırları):
+Dipnotu anlamı belirleyenler → ayrı varyant satırları (`data/kc_range_variants.csv`):
 
 | Bitki | Kc | Dipnot | Öneri |
 |---|---|---|---|
@@ -72,7 +72,7 @@ Dipnotu anlamı belirleyenler (öneri: ayrı varyant satırları):
 | Spring & winter wheat | end 0.25–0.4 | 10: yüksek değer elle hasat | makine 0.25 / elle 0.40 |
 | Rapeseed, safflower, sunflower | mid 1.0–1.15 | 9: düşük değer yağışa dayalı, seyrek | sulu 1.15 / yağışa dayalı 1.0 |
 
-Dipnotu olmayanlar (karar sizin):
+Dipnotu olmayanlar → varsayılan orta değer, basılı aralık `kc_range` alanında saklanır, kullanıcı değeri değiştirebilir:
 Tomato end 0.70–0.90 · Cotton mid 1.15–1.20, end 0.70–0.50 · Rice end 0.90–0.60 ·
 Sorghum grain mid 1.00–1.10 · Rotated grazing mid 0.85–1.05 · Sisal mid/end 0.4–0.7.
 

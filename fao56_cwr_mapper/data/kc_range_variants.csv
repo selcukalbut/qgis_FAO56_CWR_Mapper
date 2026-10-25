@@ -1,0 +1,17 @@
+crop,variant,column,new_variant,value,basis
+Green Gram and Cowpeas,,kc_end,harvested fresh,0.60,FAO-56 Table 12 footnote 6
+Green Gram and Cowpeas,,kc_end,harvested dry,0.35,FAO-56 Table 12 footnote 6
+"Rapeseed, Canola",,kc_mid,irrigated,1.15,FAO-56 Table 12 footnote 9 (lower value for rainfed crops with less dense plant populations)
+"Rapeseed, Canola",,kc_mid,rainfed,1.0,FAO-56 Table 12 footnote 9 (lower value for rainfed crops with less dense plant populations)
+Safflower,,kc_mid,irrigated,1.15,FAO-56 Table 12 footnote 9 (lower value for rainfed crops with less dense plant populations)
+Safflower,,kc_mid,rainfed,1.0,FAO-56 Table 12 footnote 9 (lower value for rainfed crops with less dense plant populations)
+Sunflower,,kc_mid,irrigated,1.15,FAO-56 Table 12 footnote 9 (lower value for rainfed crops with less dense plant populations)
+Sunflower,,kc_mid,rainfed,1.0,FAO-56 Table 12 footnote 9 (lower value for rainfed crops with less dense plant populations)
+Spring Wheat,,kc_end,machine harvested,0.25,FAO-56 Table 12 footnote 10 (higher value for hand-harvested crops)
+Spring Wheat,,kc_end,hand harvested,0.4,FAO-56 Table 12 footnote 10 (higher value for hand-harvested crops)
+Winter Wheat,with frozen soils,kc_end,machine harvested,0.25,FAO-56 Table 12 footnote 10 (higher value for hand-harvested crops)
+Winter Wheat,with frozen soils,kc_end,hand harvested,0.4,FAO-56 Table 12 footnote 10 (higher value for hand-harvested crops)
+Winter Wheat,with non-frozen soils,kc_end,machine harvested,0.25,FAO-56 Table 12 footnote 10 (higher value for hand-harvested crops)
+Winter Wheat,with non-frozen soils,kc_end,hand harvested,0.4,FAO-56 Table 12 footnote 10 (higher value for hand-harvested crops)
+"Maize, Field (grain) (field corn)",,kc_end,harvest at high grain moisture,0.60,FAO-56 Table 12 footnote 11
+"Maize, Field (grain) (field corn)",,kc_end,grain dried in field,0.35,FAO-56 Table 12 footnote 11 (to about 18% moisture)

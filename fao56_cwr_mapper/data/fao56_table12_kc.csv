@@ -40,7 +40,7 @@ e. Legumes (Leguminosae),Green Gram and Cowpeas,,0.4,1.05,0.60-0.35,yes,0.4,6,
 e. Legumes (Leguminosae),Groundnut (Peanut),,0.4,1.15,0.60,yes,0.4,,
 e. Legumes (Leguminosae),Lentil,,0.4,1.10,0.30,yes,0.5,,
 e. Legumes (Leguminosae),Peas,Fresh,0.5,1.15,1.10,,0.5,2,
-e. Legumes (Leguminosae),Peas,Dry/Seed,0.4,1.15,0.30,yes,0.5,,
+e. Legumes (Leguminosae),Peas,Dry/Seed,0.5,1.15,0.30,,0.5,,"Book prints 0.5 only on the Fresh row and leaves Dry/Seed blank (group value would be 0.4); 0.5 applied to both rows as for Fababean (author decision, S. Albut)"
 e. Legumes (Leguminosae),Soybeans,,0.4,1.15,0.50,yes,0.5-1.0,,
 f. Perennial Vegetables (with winter dormancy and initially bare or mulched soil),Artichokes,,0.5,1.00,0.95,,0.7,,
 f. Perennial Vegetables (with winter dormancy and initially bare or mulched soil),Asparagus,,0.5,0.95,0.30,,0.2-0.8,7,

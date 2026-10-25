@@ -82,6 +82,8 @@ def extract_table12(rows, corrections, review):
             if key in corrections:
                 row[col], reason = corrections[key]
                 row["correction"] = (row["correction"] + "; " if row["correction"] else "") + reason
+                if col == "kc_ini":
+                    row["kc_ini_from_group"] = ""
         label = crop + (" / " + variant if variant else "")
         for col in ("kc_ini", "kc_mid", "kc_end"):
             v = row[col]

@@ -12,3 +12,4 @@ table,crop,key,column,value,reason
 12,"Open Water, > 5 m depth, clear of turbidity, temperate climate",,kc_mid,0.65,"HTML '0.6525'; printed book shows 0.65 with footnote 25"
 12,"Open Water, > 5 m depth, clear of turbidity, temperate climate",,kc_end,1.25,"HTML '1.2525'; printed book shows 1.25 with footnote 25"
 12,Walnut Orchard,,kc_end,0.65,"HTML '0.6518'; printed book shows 0.65 with footnote 18"
+12,Peas,Dry/Seed,kc_ini,0.5,"Book prints 0.5 only on the Fresh row and leaves Dry/Seed blank (group value would be 0.4); 0.5 applied to both rows as for Fababean (author decision, S. Albut)"

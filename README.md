@@ -13,9 +13,12 @@ fao56_cwr_mapper/        QGIS plugin package (zip this folder to install)
   core/fao56.py          FAO-56 ETo, one function per equation
   core/water_balance.py  Kc curve (Eq. 66), effective rainfall, net irrigation, units
   core/eto_series.py     Daily ETo series from climate records (missing days flagged)
+  core/crop_table.py     Kc table from FAO-56 Table 12 (book-checked), user CSV, overrides
   climate_sources/       NASA POWER daily point client (with local cache)
+  data/                  FAO-56 Tables 11/12 as CSV, Kc range variants
 tests/                   Unit tests against FAO-56 worked examples (no QGIS needed)
-docs/                    Planning draft (Turkish)
+tools/                   Reproducible extraction of FAO-56 tables + documented corrections
+docs/                    Planning draft and table review list (Turkish)
 ```
 
 ## Running the tests
