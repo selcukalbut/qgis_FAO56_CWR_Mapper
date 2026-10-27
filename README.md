@@ -4,12 +4,12 @@ Computes FAO-56 Penman-Monteith reference evapotranspiration (ETo), single crop
 coefficient crop evapotranspiration (ETc = Kc × ETo), effective rainfall and net
 irrigation requirement (mm, m³, m³/da, m³/ha) for polygon or point layers.
 
-**Status:** v0.0.12 – calculation core and a QGIS Processing algorithm; no dialog yet.
+**Status:** v0.0.13 – experimental; calculation core and a QGIS Processing algorithm, no dialog yet.
 
 ## Layout
 
 ```
-fao56_cwr_mapper/        QGIS plugin package (zip this folder to install)
+fao56_cwr_mapper/        QGIS plugin package (build the zip with tools/build_plugin.py)
   core/fao56.py          FAO-56 ETo, one function per equation
   core/water_balance.py  Kc curve (Eq. 66), effective rainfall, net irrigation, units
   core/eto_series.py     Daily ETo series from climate records (missing days flagged)
@@ -73,6 +73,21 @@ PYTHONPATH=/Applications/QGIS.app/Contents/Resources/qgis/python/plugins:. /Appl
 
 Cross-check: fed with Open-Meteo's own daily inputs (Tekirdağ, July 2025) the
 core reproduces Open-Meteo's FAO-56 ET0 monthly total within 0.1 %.
+
+## Building the plugin zip
+
+```bash
+python3 tools/build_plugin.py
+```
+
+Writes `dist/fao56_cwr_mapper-<version>.zip` and checks it against the PyQGIS
+cookbook release rules (required metadata, LICENSE, folder name, icon, no hidden
+or compiled files). To test the zip as an installed plugin in headless QGIS,
+isolated from the repository code (macOS paths shown):
+
+```bash
+cd /tmp && /Applications/QGIS.app/Contents/MacOS/python /path/to/repo/tools/check_plugin_zip_qgis.py /path/to/repo/dist/fao56_cwr_mapper-0.0.13.zip
+```
 
 ## Data sources and attribution
 

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3182bd"/>
+      <stop offset="1" stop-color="#08519c"/>
+    </linearGradient>
+  </defs>
+  <!-- tile -->
+  <rect x="4" y="4" width="120" height="120" rx="22" fill="url(#bg)"/>
+  <!-- field rows -->
+  <path d="M14 100 Q64 86 114 100" fill="none" stroke="#9ecae1" stroke-width="5" stroke-linecap="round"/>
+  <path d="M14 112 Q64 98 114 112" fill="none" stroke="#9ecae1" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+  <!-- water drop -->
+  <path d="M64 16 C64 16 38 48 38 66 A26 26 0 0 0 90 66 C90 48 64 16 64 16 Z" fill="#ffffff"/>
+  <!-- leaf inside the drop -->
+  <path d="M52 76 C52 58 64 50 78 48 C78 64 70 76 52 76 Z" fill="#31a354"/>
+  <path d="M52 76 L70 56" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+</svg>
