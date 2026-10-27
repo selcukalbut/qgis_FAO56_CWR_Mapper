@@ -39,6 +39,37 @@ class TestBuildUrl(unittest.TestCase):
             np_.build_url(0, 0, date(2025, 1, 2), date(2025, 1, 1))
 
 
+class TestCellKey(unittest.TestCase):
+    # Edges measured against the live API (v2.10.1, Oct 2026)
+
+    def test_same_cell(self):
+        # these pairs returned identical data for 365 days and all 7 parameters
+        for a, b in (((40.76, 27.19), (40.99, 27.80)), ((41.01, 27.20), (41.24, 27.81)),
+                     ((-33.9, 18.4), (-33.76, 18.2))):
+            with self.subTest(a=a, b=b):
+                self.assertEqual(np_.cell_key(*a), np_.cell_key(*b))
+
+    def test_measured_edges(self):
+        # meteorology edges at 40.75 / 41.25 N and 27.1875 / 27.8125 E, radiation at 41 N, 27 / 28 E
+        pairs = [((40.70, 27.51), (40.75, 27.51)), ((41.20, 27.51), (41.25, 27.51)),
+                 ((40.98, 27.15), (40.98, 27.20)), ((40.98, 27.80), (40.98, 27.85)),
+                 ((40.95, 27.51), (41.00, 27.51)), ((40.98, 26.95), (40.98, 27.00)),
+                 ((40.98, 27.51), (41.02, 27.51))]
+        for a, b in pairs:
+            with self.subTest(a=a, b=b):
+                self.assertNotEqual(np_.cell_key(*a), np_.cell_key(*b))
+
+    def test_point_on_edge_belongs_to_upper_cell(self):
+        for edge, below, above in (((40.75, 27.51), (40.74, 27.51), (40.76, 27.51)),
+                                   ((41.00, 27.51), (40.99, 27.51), (41.01, 27.51)),
+                                   ((40.98, 27.1875), (40.98, 27.18), (40.98, 27.195)),
+                                   ((-40.75, 147.0), (-40.76, 147.0), (-40.74, 147.0)),
+                                   ((-9.7, -60.0), (-9.7, -60.01), (-9.7, -59.99))):
+            with self.subTest(edge=edge):
+                self.assertEqual(np_.cell_key(*edge), np_.cell_key(*above))
+                self.assertNotEqual(np_.cell_key(*edge), np_.cell_key(*below))
+
+
 class TestParse(unittest.TestCase):
     def test_real_response(self):
         s = np_.parse_response(load_fixture())

@@ -106,6 +106,20 @@ class TestPipeline(unittest.TestCase):
         self.assertAlmostEqual(s["NIR_mm"], s["ETc_mm"])           # no rain 1-5 July
         self.assertAlmostEqual(s["NIR_m3"], s["NIR_mm"])            # 1000 m2 = 1 da
 
+    def test_shared_series_uses_own_latitude(self):
+        # a series downloaded once for a grid cell serves every field in it
+        def no_network(url):
+            raise AssertionError("must not download")
+        from fao56_cwr_mapper.climate_sources import nasa_power
+        series = nasa_power.parse_response(__import__("json").loads(self.fetcher("")))
+        stage = StageLengths("Test crop", "", 1, 1, 1, 2, 1, 5)
+        a = pipeline.run_field(40.98, 27.51, CROP, stage, PLANT, fetcher=no_network,
+                               today=TODAY, series=series)["summary"]
+        b = pipeline.run_field(40.80, 27.51, CROP, stage, PLANT, fetcher=no_network,
+                               today=TODAY, series=series)["summary"]
+        self.assertEqual(a["P_mm"], b["P_mm"])                      # same climate
+        self.assertNotAlmostEqual(a["ETo_mm"], b["ETo_mm"], places=4)  # Ra from own latitude
+
     def test_future_planting_rejected(self):
         with self.assertRaises(ValueError):
             pipeline.run_field(40.98, 27.51, CROP, STAGE, date(2026, 11, 1),

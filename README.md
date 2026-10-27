@@ -4,7 +4,7 @@ Computes FAO-56 Penman-Monteith reference evapotranspiration (ETo), single crop
 coefficient crop evapotranspiration (ETc = Kc × ETo), effective rainfall and net
 irrigation requirement (mm, m³, m³/da, m³/ha) for polygon or point layers.
 
-**Status:** v0.0.13 – experimental; calculation core and a QGIS Processing algorithm, no dialog yet.
+**Status:** v0.0.14 – experimental; calculation core and a QGIS Processing algorithm, no dialog yet.
 
 ## Layout
 
@@ -95,9 +95,11 @@ Climate data: NASA POWER daily point API (no key). These data were obtained
 from the NASA Langley Research Center (LaRC) POWER Project funded through the
 NASA Earth Science/Applied Science Program.
 
-POWER is a coarse global grid (about 0.5°). Near coasts or in complex terrain it
-can differ markedly from local conditions; local station data is recommended
-where available.
+POWER is a coarse global grid (meteorology 0.5° × 0.625°, solar radiation 1° × 1°).
+Fields that fall in the same pair of grid cells share one download, so large
+layers need far fewer requests (200 points across Thrace: 28 downloads).
+Near coasts or in complex terrain the grid can differ markedly from local
+conditions; local station data is recommended where available.
 
 ## License
 

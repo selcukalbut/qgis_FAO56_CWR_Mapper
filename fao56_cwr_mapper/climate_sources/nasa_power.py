@@ -15,6 +15,7 @@ honours the user's proxy settings; the default uses urllib.
 """
 
 import json
+import math
 import os
 import urllib.error
 import urllib.request
@@ -69,6 +70,31 @@ class PowerSeries:
         """Days on which any variable needed for ETo is missing."""
         return [d.day for d in self.days
                 if None in (d.tmax, d.tmin, d.u2, d.rs) or (d.tdew is None and d.rh is None)]
+
+
+def request_coordinates(latitude, longitude):
+    """Coordinates as sent in the request URL (4 decimals)."""
+    return round(latitude, 4), round(longitude, 4)
+
+
+def cell_key(latitude, longitude):
+    """Key of the POWER grid cells that supply a point's daily data.
+
+    Points with the same key receive identical values for all parameters used
+    here, so one request can serve all of them. Measured against the live API
+    (v2.10.1, Oct 2026) by moving points across cell edges:
+    - meteorology (T2M_*, T2MDEW, RH2M, WS2M, PRECTOTCORR): 0.5 deg latitude x
+      0.625 deg longitude cells centred on multiples of the grid spacing;
+    - solar radiation (ALLSKY_SFC_SW_DWN): 1 x 1 deg cells with edges on whole
+      degrees;
+    - a point exactly on an edge belongs to the cell above / east of it.
+    Same key gave identical data for 365 days and all 7 parameters; different
+    keys gave different data.
+    """
+    lat, lon = request_coordinates(latitude, longitude)
+    eps = 1e-9   # exact edges go to the upper cell, as POWER does
+    return (math.floor((lat + 0.25) / 0.5 + eps), math.floor((lon + 180.0 + 0.3125) / 0.625 + eps),
+            math.floor(lat + eps), math.floor(lon + eps))
 
 
 def build_url(latitude, longitude, start, end, community="AG"):

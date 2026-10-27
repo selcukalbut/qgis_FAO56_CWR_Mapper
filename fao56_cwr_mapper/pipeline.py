@@ -12,11 +12,14 @@ from .core import eto_series, field_balance
 
 def run_field(latitude, longitude, kc_crop, stage, planting_date, area_m2=None,
               elevation=None, pe_fraction=0.80, nir_period=field_balance.NIR_DEKAD,
-              efficiency=None, fetcher=None, cache_dir=None, today=None):
+              efficiency=None, fetcher=None, cache_dir=None, today=None, series=None):
     """Full chain for one location.
 
     elevation: site elevation [m]; defaults to the POWER grid cell elevation,
     which is consistent with the gridded meteorology.
+    series: an already downloaded nasa_power.PowerSeries for the same grid cell
+    (see nasa_power.cell_key) covering the season; otherwise it is fetched.
+    ETo always uses this location's own latitude.
     Returns the field_balance result with source details added to the summary.
     """
     today = today or date.today()
@@ -24,8 +27,9 @@ def run_field(latitude, longitude, kc_crop, stage, planting_date, area_m2=None,
     if start > today:
         raise ValueError("Planting date {} is in the future; climate data is only "
                          "available for past days.".format(start))
-    series = nasa_power.fetch(latitude, longitude, start, min(end, today),
-                              fetcher=fetcher, cache_dir=cache_dir, today=today)
+    if series is None:
+        series = nasa_power.fetch(latitude, longitude, start, min(end, today),
+                                  fetcher=fetcher, cache_dir=cache_dir, today=today)
     z = series.elevation if elevation is None else elevation
     eto_rows = eto_series.daily_eto_series(series.days, latitude, z)
     result = field_balance.field_water_balance(

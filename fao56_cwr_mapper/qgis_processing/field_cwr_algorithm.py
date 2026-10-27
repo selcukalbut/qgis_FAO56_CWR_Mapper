@@ -34,6 +34,7 @@ from qgis.core import (
 from qgis.PyQt.QtCore import QDate, QDateTime, QVariant
 
 from .. import pipeline
+from ..climate_sources import nasa_power
 from ..climate_sources.nasa_power import ATTRIBUTION
 from ..core import crop_table, field_balance, report, stage_table
 from . import network
@@ -331,36 +332,78 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         da.setEllipsoid(context.ellipsoid() or "EPSG:7030")
         is_polygon = QgsWkbTypes.geometryType(source.wkbType()) == QgsWkbTypes.PolygonGeometry
 
-        daily_rows, dekad_rows, report_rows, failures = [], [], [], 0
         label_field = "name" if source.fields().indexOf("name") >= 0 else None
-        total = source.featureCount() or 1
-        for i, feat in enumerate(source.getFeatures()):
+
+        # 1. read every feature: crop, dates, stage lengths, location, area (no network)
+        records = []
+        for feat in source.getFeatures():
             if feedback.isCanceled():
                 break
-            attrs = feat.attributes()
-            result = {}
+            label = feat[label_field] if label_field else None
+            rec = {"id": feat.id(), "attrs": feat.attributes(), "geometry": feat.geometry(),
+                   "label": str(label) if label not in (None, NULL) else "fid {}".format(feat.id()),
+                   "prep": None, "error": None}
             try:
-                result = self._run_feature(
+                rec["prep"] = self._prepare_feature(
                     feat, crops, default_crop, crop_field, plant_field, default_plant, l_fields,
-                    stages, mapping, region, to_wgs84, da, is_polygon, pe_fraction, nir_period,
-                    efficiency, cache)
+                    stages, mapping, region, to_wgs84, da, is_polygon)
             except Exception as exc:  # one bad field must not stop the run
+                rec["error"] = str(exc)    # a message only: stored exceptions would keep frames alive
+            records.append(rec)
+
+        # 2. one NASA POWER download per grid cell, covering all seasons in that cell
+        today = date.today()
+        groups = {}
+        for rec in records:
+            prep = rec["prep"]
+            if prep is None or prep["start"] > today:
+                continue                     # errors and future seasons are reported in step 3
+            g = groups.setdefault(prep["cell"], {"lat": prep["lat"], "lon": prep["lon"],
+                                                 "start": prep["start"], "end": prep["end"]})
+            g["start"], g["end"] = min(g["start"], prep["start"]), max(g["end"], prep["end"])
+        feedback.pushInfo("{} feature(s) in {} NASA POWER grid cell(s): {} download(s).".format(
+            len(records), len(groups), len(groups)))
+        series, cell_errors = {}, {}
+        for n, (key, g) in enumerate(groups.items()):
+            if feedback.isCanceled():
+                break
+            try:
+                series[key] = nasa_power.fetch(g["lat"], g["lon"], g["start"], min(g["end"], today),
+                                               fetcher=self.fetcher, cache_dir=cache, today=today)
+            except Exception as exc:
+                cell_errors[key] = str(exc)
+            feedback.setProgress(80.0 * (n + 1) / len(groups))
+
+        # 3. compute and write every feature in input order
+        daily_rows, dekad_rows, report_rows, failures = [], [], [], 0
+        total = len(records) or 1
+        for i, rec in enumerate(records):
+            if feedback.isCanceled():
+                break
+            prep = rec["prep"]
+            error = rec["error"] or (cell_errors.get(prep["cell"]) if prep else None)
+            if error is None:
+                try:
+                    result = self._compute_feature(prep, series.get(prep["cell"]), pe_fraction,
+                                                   nir_period, efficiency, cache, today)
+                except Exception as exc:  # one bad field must not stop the run
+                    error = str(exc)
+            if error is not None:
                 failures += 1
-                result = {"status": "error: {}".format(exc)}
-                feedback.reportError("Feature {}: {}".format(feat.id(), exc), fatalError=False)
+                result = {"status": "error: {}".format(error)}
+                feedback.reportError("Feature {}: {}".format(rec["id"], error), fatalError=False)
             out = QgsFeature(out_fields)
-            out.setGeometry(feat.geometry())
+            out.setGeometry(rec["geometry"])
+            attrs = rec["attrs"]
             out.setAttributes(attrs + [result.get(name, NULL) for name, _, _, _ in RESULT_FIELDS])
             sink.addFeature(out, QgsFeatureSink.FastInsert)
             for d in result.get("_daily", []):
-                daily_rows.append([feat.id(), d["day"].isoformat(), d["dekad"], d["stage"],
+                daily_rows.append([rec["id"], d["day"].isoformat(), d["dekad"], d["stage"],
                                    round(d["Kc"], 3)] + [_csv(d[k]) for k in ("ETo", "ETc", "P", "Pe", "NIR")])
             for p in result.get("_dekad", []):
-                dekad_rows.append([feat.id()] + [_csv(p[k]) for k in PERIOD_COLUMNS[1:]])
-            label = feat[label_field] if label_field else None
-            report_rows.append(_report_row(
-                str(label) if label not in (None, NULL) else "fid {}".format(feat.id()), result))
-            feedback.setProgress(100.0 * (i + 1) / total)
+                dekad_rows.append([rec["id"]] + [_csv(p[k]) for k in PERIOD_COLUMNS[1:]])
+            report_rows.append(_report_row(rec["label"], result))
+            feedback.setProgress(80.0 + 20.0 * (i + 1) / total)
 
         if context.willLoadLayerOnCompletion(dest_id):
             context.layerToLoadOnCompletionDetails(dest_id).setPostProcessor(
@@ -396,9 +439,9 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             feedback.pushWarning("{} feature(s) failed; see the 'status' field.".format(failures))
         return outputs
 
-    def _run_feature(self, feat, crops, default_crop, crop_field, plant_field, default_plant,
-                     l_fields, stages, mapping, region, to_wgs84, da, is_polygon, pe_fraction,
-                     nir_period, efficiency, cache):
+    def _prepare_feature(self, feat, crops, default_crop, crop_field, plant_field, default_plant,
+                         l_fields, stages, mapping, region, to_wgs84, da, is_polygon):
+        """Everything needed for one feature except climate data."""
         geom = feat.geometry()
         if geom is None or geom.isEmpty():
             raise ValueError("empty geometry")
@@ -421,10 +464,18 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         area = None
         if is_polygon:
             area = da.convertAreaMeasurement(da.measureArea(geom), QgsUnitTypes.AreaSquareMeters)
+        start, end = field_balance.season_dates(plant, stage)
+        return {"crop": crop, "stage": stage, "stage_note": stage_note, "plant": plant,
+                "start": start, "end": end, "lat": p.y(), "lon": p.x(), "area": area,
+                "cell": nasa_power.cell_key(p.y(), p.x())}
 
-        r = pipeline.run_field(p.y(), p.x(), crop, stage, plant, area_m2=area,
-                               pe_fraction=pe_fraction, nir_period=nir_period,
-                               efficiency=efficiency, fetcher=self.fetcher, cache_dir=cache)
+    def _compute_feature(self, prep, series, pe_fraction, nir_period, efficiency, cache, today):
+        """Field balance with the climate series of the feature's grid cell."""
+        crop, stage, stage_note = prep["crop"], prep["stage"], prep["stage_note"]
+        r = pipeline.run_field(prep["lat"], prep["lon"], crop, stage, prep["plant"],
+                               area_m2=prep["area"], pe_fraction=pe_fraction,
+                               nir_period=nir_period, efficiency=efficiency, fetcher=self.fetcher,
+                               cache_dir=cache, today=today, series=series)
         s = r["summary"]
         warnings = ([stage_note + "."] if stage_note else []) + s["warnings"]
         status = "ok" if not warnings else "warning: " + " ".join(warnings)

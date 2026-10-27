@@ -176,6 +176,35 @@ class TestFieldAlgorithm(unittest.TestCase):
         self.assertEqual(feats["Field A"]["season_beg"], QDate(2025, 4, 20))
         self.assertTrue(all(f["status"] == "ok" for f in feats.values()))
 
+    def test_one_download_per_grid_cell(self):
+        calls = []
+
+        def counting_fetcher(url):
+            calls.append(url)
+            return fake_fetcher(url)
+
+        self.Alg.fetcher = staticmethod(counting_fetcher)
+        try:
+            # polygon_layer: five fields within 2 km -> one cell; 'typo' and 'garlic' fail before download
+            feats, _ = self.run_alg(self.polygon_layer(), PLANTING_DATE=QDate(2025, 5, 1))
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(sum(f["status"] == "ok" for f in feats.values()), 2)
+            # one more point in another cell (Edirne, 41.68 N 26.56 E) -> two downloads
+            layer = QgsVectorLayer("Point?crs=EPSG:4326&field=name:string", "pts", "memory")
+            pts = []
+            for name, x, y in (("a", 27.51, 40.98), ("b", 27.60, 40.90), ("c", 26.56, 41.68)):
+                f = QgsFeature(layer.fields())
+                f.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(x, y)))
+                f.setAttributes([name])
+                pts.append(f)
+            layer.dataProvider().addFeatures(pts)
+            del calls[:]
+            feats, _ = self.run_alg(layer, PLANTING_DATE=QDate(2025, 5, 1))
+            self.assertEqual(len(calls), 2)
+            self.assertTrue(all(f["status"] == "ok" for f in feats.values()))
+        finally:
+            self.Alg.fetcher = staticmethod(fake_fetcher)
+
     def test_report_output(self):
         tmp = tempfile.mkdtemp()
         for name in ("report.html", "report.txt"):
