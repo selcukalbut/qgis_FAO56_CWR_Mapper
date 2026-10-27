@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 – unreleased
+
+- Qt6 / QGIS 4 readiness: Qt enums in fully scoped form, QGIS enums from the
+  Qgis namespace when available (fallback to the QGIS 3.22 names), result
+  fields typed with QMetaType on QGIS 3.38+; no deprecation warnings on 3.44.
+- Help text states the NASA POWER grid sizes (meteorology 0.5° × 0.625°,
+  radiation 1° × 1°) and that fields in the same cells share one download.
+
 ## 0.1.0 – 2026-10-27 (experimental)
 
 First public release.

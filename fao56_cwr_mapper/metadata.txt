@@ -3,7 +3,7 @@ name=FAO-56 Crop Water Requirement Mapper
 qgisMinimumVersion=3.22
 description=Maps FAO-56 crop water requirement (ETo, ETc, effective rainfall, net irrigation) for fields and points using global climate data.
 about=Computes the FAO-56 crop water requirement chain for each field (polygon) or point: daily Penman-Monteith reference evapotranspiration ETo from NASA POWER climate data (downloaded automatically, no API key), single crop coefficient ETc = Kc x ETo with FAO-56 Table 11 stage lengths and Table 12 Kc values (checked against the printed publication), effective rainfall and net irrigation requirement in mm and m3 per dekad (CROPWAT-like) or per day. Runs as a Processing algorithm (batch and Graphical Modeler), writes a styled result layer, optional daily/dekad CSV files and an HTML run report with method, data source and warnings. Unlike Hargreaves-based tools it uses the full Penman-Monteith method; the calculation core is pure Python with unit tests against the FAO-56 worked examples. Experimental: climate data is a coarse global grid and no soil water balance is modelled yet.
-version=0.1.0
+version=0.1.1
 author=Selcuk Albut
 email=salbut@nku.edu.tr
 tags=evapotranspiration,irrigation,FAO-56,crop water,hydrology,agriculture,Penman-Monteith
@@ -15,4 +15,4 @@ homepage=https://github.com/selcukalbut/qgis_FAO56_CWR_Mapper
 repository=https://github.com/selcukalbut/qgis_FAO56_CWR_Mapper
 tracker=https://github.com/selcukalbut/qgis_FAO56_CWR_Mapper/issues
 icon=icon.png
-changelog=0.1.0 - First public experimental release: Processing algorithm for field and point layers; FAO-56 Penman-Monteith ETo from NASA POWER (one download per grid cell); FAO-56 Table 11/12 stage lengths and Kc values checked against the printed publication; effective rainfall and net irrigation per dekad or day in mm and m3; styled result layer, CSV outputs and HTML run report. See CHANGELOG.md in the repository.
+changelog=0.1.1 - Qt6/QGIS 4 compatible enum and field type names (QGIS 3.22+ still supported); help text gives the exact NASA POWER grid sizes. 0.1.0 - First public experimental release: Processing algorithm for field and point layers; FAO-56 Penman-Monteith ETo from NASA POWER (one download per grid cell); FAO-56 Table 11/12 stage lengths and Kc values checked against the printed publication; effective rainfall and net irrigation per dekad or day in mm and m3; styled result layer, CSV outputs and HTML run report. See CHANGELOG.md in the repository.

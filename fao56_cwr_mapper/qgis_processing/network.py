@@ -7,6 +7,7 @@ from qgis.PyQt.QtCore import QUrl
 from qgis.PyQt.QtNetwork import QNetworkRequest
 
 from ..climate_sources.nasa_power import PowerError
+from .compat import NETWORK_NO_ERROR
 
 
 def qgis_fetcher(url):
@@ -18,8 +19,8 @@ def qgis_fetcher(url):
     request = QgsBlockingNetworkRequest()
     error = request.get(QNetworkRequest(QUrl(url)), forceRefresh=True)
     reply = request.reply()
-    status = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
-    if error != QgsBlockingNetworkRequest.NoError and status != 422:
+    status = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+    if error != NETWORK_NO_ERROR and status != 422:
         raise PowerError("POWER request failed: {}".format(request.errorMessage()))
     return bytes(reply.content())
 

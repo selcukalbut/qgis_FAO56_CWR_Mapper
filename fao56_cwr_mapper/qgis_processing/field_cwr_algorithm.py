@@ -11,10 +11,7 @@ from qgis.core import (
     QgsCoordinateTransform,
     QgsDistanceArea,
     QgsFeature,
-    QgsFeatureSink,
-    QgsField,
     QgsFields,
-    QgsProcessing,
     QgsProcessingAlgorithm,
     QgsProcessingException,
     QgsProcessingParameterBoolean,
@@ -28,45 +25,44 @@ from qgis.core import (
     QgsProcessingParameterNumber,
     QgsProcessingParameterString,
     QgsProcessingUtils,
-    QgsUnitTypes,
     QgsWkbTypes,
 )
-from qgis.PyQt.QtCore import QDate, QDateTime, QVariant
+from qgis.PyQt.QtCore import QDate, QDateTime
 
 from .. import pipeline
 from ..climate_sources import nasa_power
 from ..climate_sources.nasa_power import ATTRIBUTION
 from ..core import crop_table, field_balance, report, stage_table
-from . import network
+from . import compat, network
 from .styling import NirStylePostProcessor
 
 WGS84 = QgsCoordinateReferenceSystem("EPSG:4326")
 NIR_PERIODS = [field_balance.NIR_DEKAD, field_balance.NIR_DAILY]
 
-# name, type, length, precision
+# name, kind (compat.make_field), length, precision
 RESULT_FIELDS = [
-    ("crop_used", QVariant.String, 80, 0),
-    ("stage_used", QVariant.String, 120, 0),
-    ("season_beg", QVariant.Date, 0, 0),
-    ("season_end", QVariant.Date, 0, 0),
-    ("ETo_mm", QVariant.Double, 10, 1),
-    ("ETc_mm", QVariant.Double, 10, 1),
-    ("P_mm", QVariant.Double, 10, 1),
-    ("Pe_mm", QVariant.Double, 10, 1),
-    ("NIR_mm", QVariant.Double, 10, 1),
-    ("NIR_m3_da", QVariant.Double, 10, 1),
-    ("NIR_m3_ha", QVariant.Double, 10, 1),
-    ("area_m2", QVariant.Double, 14, 1),
-    ("NIR_m3", QVariant.Double, 14, 1),
-    ("GIR_mm", QVariant.Double, 10, 1),
-    ("peak_dekad", QVariant.String, 12, 0),
-    ("peak_mm", QVariant.Double, 10, 1),
-    ("miss_days", QVariant.Int, 6, 0),
-    ("nir_period", QVariant.String, 8, 0),
-    ("pe_frac", QVariant.Double, 5, 2),
-    ("elev_m", QVariant.Double, 8, 1),
-    ("clim_src", QVariant.String, 80, 0),
-    ("status", QVariant.String, 1000, 0),   # shapefile output truncates to 254
+    ("crop_used", "string", 80, 0),
+    ("stage_used", "string", 120, 0),
+    ("season_beg", "date", 0, 0),
+    ("season_end", "date", 0, 0),
+    ("ETo_mm", "double", 10, 1),
+    ("ETc_mm", "double", 10, 1),
+    ("P_mm", "double", 10, 1),
+    ("Pe_mm", "double", 10, 1),
+    ("NIR_mm", "double", 10, 1),
+    ("NIR_m3_da", "double", 10, 1),
+    ("NIR_m3_ha", "double", 10, 1),
+    ("area_m2", "double", 14, 1),
+    ("NIR_m3", "double", 14, 1),
+    ("GIR_mm", "double", 10, 1),
+    ("peak_dekad", "string", 12, 0),
+    ("peak_mm", "double", 10, 1),
+    ("miss_days", "int", 6, 0),
+    ("nir_period", "string", 8, 0),
+    ("pe_frac", "double", 5, 2),
+    ("elev_m", "double", 8, 1),
+    ("clim_src", "string", 80, 0),
+    ("status", "string", 1000, 0),   # shapefile output truncates to 254
 ]
 DAILY_COLUMNS = ["fid", "date", "dekad", "stage", "Kc", "ETo", "ETc", "P", "Pe", "NIR"]
 PERIOD_COLUMNS = ["fid", "period", "days", "missing_days", "ETo", "ETc", "P", "Pe", "NIR"]
@@ -152,8 +148,9 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             "example planted in the same month is used and 'status' carries a warning that "
             "names the choice and the other examples for that month. The option used is "
             "written to 'stage_used'; local stage lengths are always preferable.\n\n"
-            "Climate is queried at a point inside each polygon. NASA POWER is a coarse "
-            "(about 0.5 degree) global grid; compare with local station data where possible. "
+            "Climate is queried at a point inside each polygon. NASA POWER is a coarse global "
+            "grid (meteorology 0.5 x 0.625 degree, solar radiation 1 x 1 degree); fields in the "
+            "same cells share one download. Compare with local station data where possible. "
             "Areas are ellipsoidal. Days without data are never filled; they are counted in "
             "'miss_days' and periods with gaps get no net irrigation value.\n\n" + ATTRIBUTION)
 
@@ -161,54 +158,54 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         names = [c.name for c in self._crops]
         self.addParameter(QgsProcessingParameterFeatureSource(
             self.INPUT, "Fields (polygons) or points",
-            [QgsProcessing.TypeVectorPolygon, QgsProcessing.TypeVectorPoint]))
+            [compat.SOURCE_POLYGON, compat.SOURCE_POINT]))
         self.addParameter(QgsProcessingParameterField(
             self.CROP_FIELD, "Crop name field (optional)", parentLayerParameterName=self.INPUT,
-            type=QgsProcessingParameterField.String, optional=True, defaultValue="crop"))
+            type=compat.FIELD_STRING, optional=True, defaultValue="crop"))
         self.addParameter(QgsProcessingParameterEnum(
             self.CROP, "Crop (used when no crop field is given or it is empty)", options=names,
             defaultValue=names.index("Tomato")))
         self.addParameter(QgsProcessingParameterField(
             self.PLANTING_FIELD, "Planting date field (optional; date or YYYY-MM-DD text)",
-            parentLayerParameterName=self.INPUT, type=QgsProcessingParameterField.Any,
+            parentLayerParameterName=self.INPUT, type=compat.FIELD_ANY,
             optional=True, defaultValue="planted"))
         last_year = date.today().year - 1
         self.addParameter(QgsProcessingParameterDateTime(
             self.PLANTING_DATE, "Planting date (used when no planting date field is given)",
-            type=QgsProcessingParameterDateTime.Date, defaultValue=QDate(last_year, 4, 15)))
+            type=compat.DATETIME_DATE, defaultValue=QDate(last_year, 4, 15)))
         self.addParameter(QgsProcessingParameterString(
             self.STAGE_REGION, "Region keyword for FAO-56 Table 11 stage lengths",
             defaultValue="Mediterranean", optional=True))
         self.addParameter(QgsProcessingParameterField(
             self.REGION_FIELD, "Region keyword field (optional, overrides the keyword per feature)",
-            parentLayerParameterName=self.INPUT, type=QgsProcessingParameterField.String,
+            parentLayerParameterName=self.INPUT, type=compat.FIELD_STRING,
             optional=True, defaultValue="region"))
         for key, label in zip(self.L_FIELDS, ("initial", "development", "mid-season", "late season")):
             p = QgsProcessingParameterField(
                 key, "Stage length field, {} [days] (optional)".format(label),
-                parentLayerParameterName=self.INPUT, type=QgsProcessingParameterField.Numeric,
+                parentLayerParameterName=self.INPUT, type=compat.FIELD_NUMERIC,
                 optional=True)
-            p.setFlags(p.flags() | p.FlagAdvanced)
+            p.setFlags(p.flags() | compat.FLAG_ADVANCED)
             self.addParameter(p)
         p = QgsProcessingParameterFile(
             self.USER_KC_CSV, "User crop coefficient table (CSV: crop, variant, kc_ini, kc_mid, kc_end)",
             extension="csv", optional=True)
-        p.setFlags(p.flags() | p.FlagAdvanced)
+        p.setFlags(p.flags() | compat.FLAG_ADVANCED)
         self.addParameter(p)
         self.addParameter(QgsProcessingParameterNumber(
             self.PE_FRACTION, "Effective rainfall fraction (Pe = fraction x P)",
-            type=QgsProcessingParameterNumber.Double, minValue=0.0, maxValue=1.0, defaultValue=0.8))
+            type=compat.NUMBER_DOUBLE, minValue=0.0, maxValue=1.0, defaultValue=0.8))
         self.addParameter(QgsProcessingParameterEnum(
             self.NIR_PERIOD, "Net irrigation evaluated per",
             options=["Dekad (CROPWAT-like)", "Day"], defaultValue=0))
         p = QgsProcessingParameterNumber(
             self.EFFICIENCY, "Irrigation application efficiency for gross requirement (0 = not computed)",
-            type=QgsProcessingParameterNumber.Double, minValue=0.0, maxValue=1.0, defaultValue=0.0)
-        p.setFlags(p.flags() | p.FlagAdvanced)
+            type=compat.NUMBER_DOUBLE, minValue=0.0, maxValue=1.0, defaultValue=0.0)
+        p.setFlags(p.flags() | compat.FLAG_ADVANCED)
         self.addParameter(p)
         p = QgsProcessingParameterBoolean(self.USE_CACHE, "Use local cache for climate downloads",
                                           defaultValue=True)
-        p.setFlags(p.flags() | p.FlagAdvanced)
+        p.setFlags(p.flags() | compat.FLAG_ADVANCED)
         self.addParameter(p)
         self.addParameter(QgsProcessingParameterFeatureSink(self.OUTPUT, "Crop water requirement"))
         self.addParameter(QgsProcessingParameterFileDestination(
@@ -251,10 +248,6 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
 
     def _check_planting_field(self, source, name):
         """Stop early when the planting date field clearly holds no dates."""
-        field = source.fields().field(name)
-        if field.type() not in (QVariant.Date, QVariant.DateTime, QVariant.String):
-            raise QgsProcessingException(
-                "Planting date field '{}' must be a date or text field (YYYY-MM-DD).".format(name))
         values = []
         for feat in source.getFeatures():
             v = feat[name]
@@ -318,8 +311,8 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         cache = network.cache_dir() if self.parameterAsBoolean(parameters, self.USE_CACHE, context) else None
 
         fields = QgsFields()
-        for name, vtype, length, prec in RESULT_FIELDS:
-            fields.append(QgsField(name, vtype, len=length, prec=prec))
+        for name, kind, length, prec in RESULT_FIELDS:
+            fields.append(compat.make_field(name, kind, length, prec))
         out_fields = QgsProcessingUtils.combineFields(source.fields(), fields)
         sink, dest_id = self.parameterAsSink(parameters, self.OUTPUT, context, out_fields,
                                              source.wkbType(), source.sourceCrs())
@@ -330,7 +323,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         da = QgsDistanceArea()
         da.setSourceCrs(source.sourceCrs(), context.transformContext())
         da.setEllipsoid(context.ellipsoid() or "EPSG:7030")
-        is_polygon = QgsWkbTypes.geometryType(source.wkbType()) == QgsWkbTypes.PolygonGeometry
+        is_polygon = QgsWkbTypes.geometryType(source.wkbType()) == compat.GEOMETRY_POLYGON
 
         label_field = "name" if source.fields().indexOf("name") >= 0 else None
 
@@ -396,7 +389,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             out.setGeometry(rec["geometry"])
             attrs = rec["attrs"]
             out.setAttributes(attrs + [result.get(name, NULL) for name, _, _, _ in RESULT_FIELDS])
-            sink.addFeature(out, QgsFeatureSink.FastInsert)
+            sink.addFeature(out, compat.FAST_INSERT)
             for d in result.get("_daily", []):
                 daily_rows.append([rec["id"], d["day"].isoformat(), d["dekad"], d["stage"],
                                    round(d["Kc"], 3)] + [_csv(d[k]) for k in ("ETo", "ETc", "P", "Pe", "NIR")])
@@ -463,7 +456,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         p = point.asPoint()
         area = None
         if is_polygon:
-            area = da.convertAreaMeasurement(da.measureArea(geom), QgsUnitTypes.AreaSquareMeters)
+            area = da.convertAreaMeasurement(da.measureArea(geom), compat.AREA_SQUARE_METERS)
         start, end = field_balance.season_dates(plant, stage)
         return {"crop": crop, "stage": stage, "stage_note": stage_note, "plant": plant,
                 "start": start, "end": end, "lat": p.y(), "lon": p.x(), "area": area,
