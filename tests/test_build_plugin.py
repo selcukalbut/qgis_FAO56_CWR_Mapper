@@ -38,6 +38,26 @@ class TestReleaseChecks(unittest.TestCase):
                 errs = errors_for(**{key: value})
                 self.assertTrue(any(word in e for e in errs), errs)
 
+    def test_security_patterns(self):
+        import ast
+        bad = """
+import urllib.request
+import subprocess
+try:
+    x = 1
+except Exception:
+    pass
+urllib.request.urlopen("file:///etc/passwd")
+eval("1")
+"""
+        found = [msg for _, msg in bp.security_patterns(ast.parse(bad))]
+        self.assertTrue(any("B110" in m for m in found), found)
+        self.assertTrue(any("urlopen" in m for m in found), found)
+        self.assertTrue(any("eval" in m for m in found), found)
+        self.assertTrue(any("subprocess" in m for m in found), found)
+        ok = "import json\ntry:\n    json.loads('1')\nexcept ValueError as e:\n    print(e)\n"
+        self.assertEqual(bp.security_patterns(ast.parse(ok)), [])
+
     def test_package_files(self):
         rep = bp.Report()
         files = bp.collect_files(rep)

@@ -4,9 +4,13 @@ Usage (repository root):  python3 tools/build_plugin.py
 Writes dist/fao56_cwr_mapper-<version>.zip and exits with status 1 if any
 check fails. Checks follow the PyQGIS developer cookbook (Releasing your
 plugin; metadata.txt): required metadata fields, LICENSE file, folder name,
-icon, no generated or hidden files. The upload itself remains the final check.
+icon, no generated or hidden files. Code patterns that the plugins.qgis.org
+security scan (Bandit) reports are refused as well; 0.1.0 was blocked for
+urlopen (B310) and try/except/pass (B110). Run Bandit and detect-secrets too
+(see README). The upload itself remains the final check.
 """
 
+import ast
 import configparser
 import os
 import re
@@ -123,10 +127,41 @@ def check_package(files, rep):
     for full, rel in files:
         if rel.endswith(".py"):
             with open(full, encoding="utf-8") as fh:
-                try:
-                    compile(fh.read(), rel, "exec")
-                except SyntaxError as exc:
-                    rep.error("syntax error in {}: {}".format(rel, exc))
+                source = fh.read()
+            try:
+                tree = ast.parse(source, rel)
+            except SyntaxError as exc:
+                rep.error("syntax error in {}: {}".format(rel, exc))
+                continue
+            for line, msg in security_patterns(tree):
+                rep.error("{}:{}: {}".format(rel, line, msg))
+
+
+# call names reported by Bandit (B102, B307, B301, B310, B404, B605, B506)
+RISKY_CALLS = {"eval", "exec", "urlopen", "system", "popen", "load", "loads"}
+RISKY_MODULES = {"pickle", "subprocess", "marshal", "shelve", "yaml"}
+
+
+def security_patterns(tree):
+    """(line, message) for code that the plugins.qgis.org Bandit scan reports."""
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ExceptHandler) and all(
+                isinstance(stmt, (ast.Pass, ast.Continue)) for stmt in node.body):
+            found.append((node.lineno, "exception silently ignored (Bandit B110/B112)"))
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            modules = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or ""]
+            for m in modules:
+                if m.split(".")[0] in RISKY_MODULES or m.startswith("urllib.request"):
+                    found.append((node.lineno, "import of {} (Bandit B4xx/B310)".format(m)))
+        elif isinstance(node, ast.Call):
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else ""
+            owner = func.value.id if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) else ""
+            if name in ("eval", "exec", "urlopen") or (name in RISKY_CALLS and owner in
+                                                          RISKY_MODULES | {"os", "request"}):
+                found.append((node.lineno, "call to {}{} (Bandit)".format(owner + "." if owner else "", name)))
+    return found
 
 
 def write_zip(files, version):

@@ -9,16 +9,15 @@ Request/response format verified against the live API (v2.10.1, Oct 2026):
   ~6 for radiation, and any future dates) come back as fill_value -999.
 - Invalid requests return HTTP 422 with a {"detail": [...]} body.
 
-The module has no QGIS dependency. Network access goes through a ``fetcher``
-callable (url -> bytes) so the plugin can pass a QGIS network request that
-honours the user's proxy settings; the default uses urllib.
+The module has no QGIS dependency and opens no network connections itself:
+downloads go through a ``fetcher`` callable (url -> bytes). The plugin passes
+a QGIS network request that honours the user's proxy settings
+(qgis_processing/network.py); scripts outside QGIS use tools/power_urllib.py.
 """
 
 import json
 import math
 import os
-import urllib.error
-import urllib.request
 from datetime import date, datetime
 
 BASE_URL = "https://power.larc.nasa.gov/api/temporal/daily/point"
@@ -153,19 +152,6 @@ def parse_response(data):
     return PowerSeries(lat, lon, elevation, header.get("sources", []), days, api_version)
 
 
-def urllib_fetcher(url, timeout=60):
-    """Default fetcher. Returns the body for HTTP 200 and 422 (error JSON)."""
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            return resp.read()
-    except urllib.error.HTTPError as exc:
-        if exc.code == 422:
-            return exc.read()
-        raise PowerError("POWER API HTTP error {}".format(exc.code)) from exc
-    except urllib.error.URLError as exc:
-        raise PowerError("Cannot reach POWER API: {}".format(exc.reason)) from exc
-
-
 def _cache_path(cache_dir, latitude, longitude, start, end):
     name = "power_{:.4f}_{:.4f}_{}_{}.json".format(
         latitude, longitude, start.strftime("%Y%m%d"), end.strftime("%Y%m%d"))
@@ -175,6 +161,7 @@ def _cache_path(cache_dir, latitude, longitude, start, end):
 def fetch(latitude, longitude, start, end, fetcher=None, cache_dir=None, today=None):
     """Download (or read from cache) daily POWER data for one point.
 
+    fetcher: callable(url) -> bytes, returning the body for HTTP 200 and 422.
     Start dates in the future are rejected. Responses that still contain
     missing values are not cached, so recent days are fetched again once
     POWER has filled them in.
@@ -188,7 +175,9 @@ def fetch(latitude, longitude, start, end, fetcher=None, cache_dir=None, today=N
         with open(path, "r", encoding="utf-8") as fh:
             return parse_response(json.load(fh))
 
-    body = (fetcher or urllib_fetcher)(build_url(latitude, longitude, start, end))
+    if fetcher is None:
+        raise ValueError("A fetcher is required to download NASA POWER data.")
+    body = fetcher(build_url(latitude, longitude, start, end))
     try:
         data = json.loads(body.decode("utf-8") if isinstance(body, bytes) else body)
     except ValueError as exc:

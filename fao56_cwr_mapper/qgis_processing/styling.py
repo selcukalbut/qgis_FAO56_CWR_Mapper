@@ -5,11 +5,14 @@ from qgis.core import (
     QgsGradientColorRamp,
     QgsGradientStop,
     QgsGraduatedSymbolRenderer,
+    QgsMessageLog,
     QgsProcessingLayerPostProcessorInterface,
     QgsRendererRange,
     QgsSymbol,
 )
 from qgis.PyQt.QtGui import QColor
+
+from .compat import MESSAGE_WARNING
 
 FIELD = "NIR_mm"
 NO_VALUE = -1.0
@@ -69,12 +72,14 @@ def apply_nir_style(layer):
     layer.triggerRepaint()
     source = layer.source().split("|")[0].lower()
     if layer.providerType() == "ogr" and source.endswith(".gpkg"):
+        # saveStyleToDatabaseV2 exists in recent QGIS; the old call is kept for 3.22+
+        save = getattr(layer, "saveStyleToDatabaseV2", None) or layer.saveStyleToDatabase
         try:
-            # saveStyleToDatabaseV2 exists in recent QGIS; the old call is kept for 3.22+
-            save = getattr(layer, "saveStyleToDatabaseV2", None) or layer.saveStyleToDatabase
             save("default", "Net irrigation requirement (mm)", True, "")
-        except Exception:  # style persistence is a convenience only
-            pass
+        except Exception as exc:  # the layer is styled anyway; only the stored copy is missing
+            QgsMessageLog.logMessage(
+                "Could not store the style in {}: {}".format(source, exc),
+                "FAO-56 Crop Water", MESSAGE_WARNING)
     return True
 
 

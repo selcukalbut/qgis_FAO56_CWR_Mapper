@@ -139,6 +139,15 @@ class TestFetchAndCache(unittest.TestCase):
         np_.fetch(*args, fetcher=self.fetcher, cache_dir=self.tmp)
         self.assertEqual(len(self.calls), 2)
 
+    def test_no_fetcher_no_download(self):
+        # the plugin package opens no connections itself (security scan, B310)
+        with self.assertRaisesRegex(ValueError, "fetcher is required"):
+            np_.fetch(40.98, 27.51, date(2025, 7, 1), date(2025, 7, 5), today=date(2026, 10, 25))
+        np_.fetch(40.98, 27.51, date(2025, 7, 1), date(2025, 7, 5),
+                  fetcher=self.fetcher, cache_dir=self.tmp)
+        cached = np_.fetch(40.98, 27.51, date(2025, 7, 1), date(2025, 7, 5), cache_dir=self.tmp)
+        self.assertEqual(len(cached.days), 5)                       # cache needs no fetcher
+
     def test_future_start_rejected(self):
         with self.assertRaises(ValueError):
             np_.fetch(0, 0, date(2026, 11, 1), date(2026, 11, 5),

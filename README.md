@@ -89,6 +89,16 @@ isolated from the repository code (macOS paths shown):
 cd /tmp && /Applications/QGIS.app/Contents/MacOS/python /path/to/repo/tools/check_plugin_zip_qgis.py /path/to/repo/dist/fao56_cwr_mapper-0.0.13.zip
 ```
 
+Before uploading, run the same security scanners as plugins.qgis.org
+(Bandit and detect-secrets block a version; critical Flake8 rules are checked too):
+
+```bash
+pip install bandit detect-secrets flake8
+bandit -r fao56_cwr_mapper
+detect-secrets scan fao56_cwr_mapper
+flake8 --select=F821,F823,F831,E901,E902,E999 fao56_cwr_mapper
+```
+
 ## Data sources and attribution
 
 Climate data: NASA POWER daily point API (no key). These data were obtained

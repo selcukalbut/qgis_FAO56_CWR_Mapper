@@ -2,6 +2,13 @@
 
 ## 0.1.1 – unreleased
 
+- Security scan fixes (0.1.0 was blocked on plugins.qgis.org): the plugin no
+  longer contains `urllib.request.urlopen` (Bandit B310); all downloads go
+  through QGIS's network stack, and the urllib fetcher for scripts moved to
+  `tools/power_urllib.py`. A failed style save is logged to the QGIS message
+  log instead of being ignored (Bandit B110). Bandit, detect-secrets and the
+  critical Flake8 rules report no findings.
+- `tools/build_plugin.py` refuses code patterns that the security scan reports.
 - Qt6 / QGIS 4 readiness: Qt enums in fully scoped form, QGIS enums from the
   Qgis namespace when available (fallback to the QGIS 3.22 names), result
   fields typed with QMetaType on QGIS 3.38+; no deprecation warnings on 3.44.

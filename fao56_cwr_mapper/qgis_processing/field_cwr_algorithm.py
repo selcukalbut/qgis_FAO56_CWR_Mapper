@@ -91,6 +91,14 @@ def _to_date(value):
         raise ValueError("planting date '{}' is not YYYY-MM-DD".format(text))
 
 
+def _is_date(value):
+    """True when _to_date can read the value as a date."""
+    try:
+        return _to_date(value) is not None
+    except ValueError:
+        return False
+
+
 class FieldCropWaterRequirement(QgsProcessingAlgorithm):
     INPUT = "INPUT"
     CROP_FIELD = "CROP_FIELD"
@@ -255,14 +263,8 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                 values.append(v)
             if len(values) >= 20:
                 break
-        if not values:
+        if not values or any(_is_date(v) for v in values):
             return
-        for v in values:
-            try:
-                if _to_date(v):
-                    return
-            except ValueError:
-                pass
         raise QgsProcessingException(
             "Planting date field '{}' contains no dates (e.g. '{}'). Choose the field with "
             "planting dates or leave it empty to use the Planting date parameter.".format(name, values[0]))

@@ -10,7 +10,9 @@ import sys
 from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from fao56_cwr_mapper.climate_sources import nasa_power as np_
+import power_urllib
 from fao56_cwr_mapper.core import fao56, eto_series, field_balance as fb, water_balance as wb
 from fao56_cwr_mapper.core.crop_table import CropKc
 from fao56_cwr_mapper.core.stage_table import StageLengths
@@ -26,7 +28,7 @@ for name, w in web.items():
     stage = StageLengths(name, "", 0, c["Lini"], c["Ldev"], c["Lmid"], c["Llate"], None, region="web app")
     plant = datetime.strptime(w["rows"][0]["date"], "%Y%m%d").date()
     start, end = fb.season_dates(plant, stage)
-    s = np_.fetch(LAT, LON, start, end, cache_dir=cache)
+    s = np_.fetch(LAT, LON, start, end, fetcher=power_urllib.fetcher, cache_dir=cache)
     z = s.elevation
     days = {d.day: d for d in s.days}
     # plugin as shipped: ea from dewpoint, dekad NIR, Pe = 0.8 P

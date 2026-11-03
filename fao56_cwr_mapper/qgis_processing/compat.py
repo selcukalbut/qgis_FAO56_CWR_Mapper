@@ -24,12 +24,13 @@ def _first(*candidates):
     """Value of the first attribute path that exists, e.g. (Qgis, "AreaUnit", "SquareMeters")."""
     for owner, *names in candidates:
         value = owner
-        try:
-            for name in names:
-                value = getattr(value, name)
-        except AttributeError:
-            continue
-        return value
+        for name in names:
+            if not hasattr(value, name):
+                value = None
+                break
+            value = getattr(value, name)
+        if value is not None:
+            return value
     raise AttributeError("none of the names exist: {}".format(candidates))
 
 
@@ -55,6 +56,7 @@ AREA_SQUARE_METERS = _first((Qgis, "AreaUnit", "SquareMeters"),
                             (QgsUnitTypes, "AreaSquareMeters"))
 FAST_INSERT = _first((QgsFeatureSink, "Flag", "FastInsert"),
                      (QgsFeatureSink, "FastInsert"))
+MESSAGE_WARNING = _first((Qgis, "MessageLevel", "Warning"), (Qgis, "Warning"))
 NETWORK_NO_ERROR = _first((QgsBlockingNetworkRequest, "ErrorCode", "NoError"),
                           (QgsBlockingNetworkRequest, "NoError"))
 
