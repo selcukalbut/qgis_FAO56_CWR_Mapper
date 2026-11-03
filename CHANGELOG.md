@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.1 – unreleased
+## 0.1.1 – 2026-11-03 (experimental)
 
 - Security scan fixes (0.1.0 was blocked on plugins.qgis.org): the plugin no
   longer contains `urllib.request.urlopen` (Bandit B310); all downloads go
