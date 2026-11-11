@@ -13,7 +13,9 @@ from qgis.core import (
     QgsDistanceArea,
     QgsFeature,
     QgsFields,
+    QgsGeometry,
     QgsPointXY,
+    QgsRectangle,
     QgsProcessingAlgorithm,
     QgsProcessingException,
     QgsProcessingParameterBoolean,
@@ -63,8 +65,9 @@ RESULT_FIELDS = [
     ("nir_period", "string", 8, 0),
     ("pe_frac", "double", 5, 2),
     ("elev_m", "double", 8, 1),
-    ("clim_src", "string", 80, 0),
+    ("clim_src", "string", 254, 0),
     ("station_km", "double", 8, 1),
+    ("stn_weight", "string", 254, 0),
     ("status", "string", 1000, 0),   # shapefile output truncates to 254
 ]
 DAILY_COLUMNS = ["fid", "date", "dekad", "stage", "Kc", "ETo", "ETc", "P", "Pe", "NIR"]
@@ -121,6 +124,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
     STATION_LAYER = "STATION_LAYER"
     STATION_ID_FIELD = "STATION_ID_FIELD"
     STATION_ELEV_FIELD = "STATION_ELEV_FIELD"
+    ASSIGNMENT = "ASSIGNMENT"
     MAX_DISTANCE_KM = "MAX_DISTANCE_KM"
     WIND_HEIGHT = "WIND_HEIGHT"
     ESTIMATE_MISSING = "ESTIMATE_MISSING"
@@ -172,7 +176,9 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             "tmax, tmin, precip and, where available, tdew or rhmax/rhmin or rh, u2 or wind, rs or "
             "sunshine hours; English or Turkish names, ; and decimal comma accepted) plus a point "
             "layer with the station ID and elevation. Each field uses its nearest station within "
-            "the maximum distance ('station_km'). Missing humidity, radiation or wind can be "
+            "the maximum distance ('station_km'), or, with Thiessen area weighting, the "
+            "area-weighted daily ETo and rainfall of the stations whose Thiessen polygons it "
+            "overlaps (weights in 'stn_weight'). Missing humidity, radiation or wind can be "
             "estimated with the FAO-56 procedures (Eq. 48, Eq. 50, 2 m/s); every estimate is "
             "reported in 'status'.\n\n"
             "Climate is queried at a point inside each polygon. NASA POWER is a coarse global "
@@ -236,6 +242,10 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             self.STATION_ELEV_FIELD, "Station elevation field [m]",
             parentLayerParameterName=self.STATION_LAYER, type=compat.FIELD_NUMERIC, optional=True,
             defaultValue="elevation"))
+        self.addParameter(QgsProcessingParameterEnum(
+            self.ASSIGNMENT, "Station assignment",
+            options=["Nearest station", "Thiessen area weighting (polygons; points use the nearest)"],
+            defaultValue=0))
         self.addParameter(QgsProcessingParameterNumber(
             self.MAX_DISTANCE_KM, "Maximum distance from a field to its station [km]",
             type=compat.NUMBER_DOUBLE, minValue=0.0, defaultValue=50.0))
@@ -383,6 +393,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             raise QgsProcessingException("No station of the CSV file matches a station in the layer.")
         feedback.pushInfo("Loaded {} station(s) from {}.".format(len(series), os.path.basename(path)))
         settings = {"source": "station", "file": os.path.basename(path),
+                    "assignment": ("nearest", "thiessen")[self.parameterAsEnum(parameters, self.ASSIGNMENT, context)],
                     "max_distance_km": self.parameterAsDouble(parameters, self.MAX_DISTANCE_KM, context),
                     "wind_height": wind_height,
                     "estimation": self.parameterAsBoolean(parameters, self.ESTIMATE_MISSING, context),
@@ -401,6 +412,59 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                 max_km, station.station_id or "station", dist))
         prep["cell"] = ("station", station.station_id)
         prep["station_km"] = dist
+
+    @staticmethod
+    def _thiessen_cells(stations, context):
+        """(AEQD CRS, [(station index, cell polygon)]) for the stations.
+
+        Cells are built in an azimuthal equidistant projection centred on the
+        stations, which keeps the nearest-station relation of the Voronoi
+        diagram on a regional scale.
+        """
+        lat0 = sum(st.latitude for st in stations) / len(stations)
+        lon0 = sum(st.longitude for st in stations) / len(stations)
+        aeqd = QgsCoordinateReferenceSystem.fromProj(
+            "+proj=aeqd +lat_0={:.6f} +lon_0={:.6f} +datum=WGS84 +units=m +no_defs".format(lat0, lon0))
+        to_aeqd = QgsCoordinateTransform(WGS84, aeqd, context.transformContext())
+        pts = [to_aeqd.transform(QgsPointXY(st.longitude, st.latitude)) for st in stations]
+        if len(pts) == 1:
+            return aeqd, [(0, None)]
+        multipoint = QgsGeometry.fromMultiPointXY(pts)
+        box = multipoint.boundingBox()
+        margin = max(box.width(), box.height()) * 10 + 500000.0
+        frame = QgsRectangle(box.xMinimum() - margin, box.yMinimum() - margin,
+                             box.xMaximum() + margin, box.yMaximum() + margin)
+        diagram = multipoint.voronoiDiagram(QgsGeometry.fromRect(frame))
+        cells = []
+        for cell in diagram.asGeometryCollection():
+            owner = [i for i, pt in enumerate(pts) if cell.contains(QgsGeometry.fromPointXY(pt))]
+            if owner:
+                cells.append((owner[0], cell))
+        return aeqd, cells
+
+    @staticmethod
+    def _thiessen_weights(geometry, prep, stations, thiessen, max_km, geod):
+        """[(station index, weight)] from ellipsoidal intersection areas of a field polygon."""
+        aeqd, cells, to_aeqd, area_aeqd = thiessen
+        if len(cells) == 1 and cells[0][1] is None:
+            return [(0, 1.0)]
+        g = QgsGeometry(geometry)
+        if not g.isGeosValid():
+            g = g.makeValid()
+        g.transform(to_aeqd)
+        here = QgsPointXY(prep["lon"], prep["lat"])
+        weights = []
+        for idx, cell in cells:
+            part = g.intersection(cell)
+            if part.isEmpty():
+                continue
+            st = stations[idx]
+            if geod.measureLine(here, QgsPointXY(st.longitude, st.latitude)) / 1000.0 > max_km:
+                continue                      # too far away to represent this field
+            area = area_aeqd.measureArea(part)
+            if area > 0:
+                weights.append((idx, area))
+        return weights
 
     # --- run ----------------------------------------------------------------
 
@@ -452,6 +516,14 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         geod = QgsDistanceArea()
         geod.setSourceCrs(WGS84, context.transformContext())
         geod.setEllipsoid("EPSG:7030")
+        thiessen = None
+        if stations and climate_settings["assignment"] == "thiessen":
+            aeqd, cells = self._thiessen_cells(stations, context)
+            area_aeqd = QgsDistanceArea()
+            area_aeqd.setSourceCrs(aeqd, context.transformContext())
+            area_aeqd.setEllipsoid("EPSG:7030")
+            thiessen = (aeqd, cells, QgsCoordinateTransform(source.sourceCrs(), aeqd,
+                                                            context.transformContext()), area_aeqd)
 
         fields = QgsFields()
         for name, kind, length, prec in RESULT_FIELDS:
@@ -485,6 +557,10 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                     stages, mapping, region, to_wgs84, da, is_polygon)
                 if stations:
                     self._nearest_station(rec["prep"], stations, climate_settings["max_distance_km"], geod)
+                if thiessen and is_polygon:
+                    rec["prep"]["weights"] = self._thiessen_weights(
+                        feat.geometry(), rec["prep"], stations, thiessen,
+                        climate_settings["max_distance_km"], geod)
             except Exception as exc:  # one bad field must not stop the run
                 rec["error"] = str(exc)    # a message only: stored exceptions would keep frames alive
             records.append(rec)
@@ -528,8 +604,12 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             error = rec["error"] or (cell_errors.get(prep["cell"]) if prep else None)
             if error is None:
                 try:
-                    result = self._compute_feature(prep, series.get(prep["cell"]), pe_fraction,
-                                                   nir_period, efficiency, cache, today, estimation)
+                    if len(prep.get("weights") or []) > 1:
+                        result = self._compute_weighted(prep, stations, pe_fraction, nir_period,
+                                                        efficiency, today, estimation)
+                    else:
+                        result = self._compute_feature(prep, series.get(prep["cell"]), pe_fraction,
+                                                       nir_period, efficiency, cache, today, estimation)
                 except Exception as exc:  # one bad field must not stop the run
                     error = str(exc)
             if error is not None:
@@ -617,11 +697,30 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
     def _compute_feature(self, prep, series, pe_fraction, nir_period, efficiency, cache, today,
                          estimation=None):
         """Field balance with the climate series of the feature's grid cell or station."""
-        crop, stage, stage_note = prep["crop"], prep["stage"], prep["stage_note"]
-        r = pipeline.run_field(prep["lat"], prep["lon"], crop, stage, prep["plant"],
+        r = pipeline.run_field(prep["lat"], prep["lon"], prep["crop"], prep["stage"], prep["plant"],
                                area_m2=prep["area"], pe_fraction=pe_fraction,
                                nir_period=nir_period, efficiency=efficiency, fetcher=self.fetcher,
                                cache_dir=cache, today=today, series=series, estimation=estimation)
+        result = self._result(prep, r, pe_fraction)
+        if prep.get("weights") is not None:          # Thiessen mode, field inside one cell
+            result["stn_weight"] = "{}:1.000".format(prep["cell"][1] or "station")
+        return result
+
+    def _compute_weighted(self, prep, stations, pe_fraction, nir_period, efficiency, today, estimation):
+        """Field balance with Thiessen-weighted stations."""
+        parts = [(w, stations[i]) for i, w in prep["weights"]]
+        r = pipeline.run_field_weighted(prep["lat"], prep["lon"], prep["crop"], prep["stage"],
+                                        prep["plant"], parts, area_m2=prep["area"],
+                                        pe_fraction=pe_fraction, nir_period=nir_period,
+                                        efficiency=efficiency, today=today, estimation=estimation)
+        result = self._result(prep, r, pe_fraction)
+        result["stn_weight"] = " ".join("{}:{:.3f}".format(sid or "station", w)
+                                        for sid, w in r["summary"]["station_weights"])
+        return result
+
+    def _result(self, prep, r, pe_fraction):
+        """Output attributes for one computed feature."""
+        crop, stage, stage_note = prep["crop"], prep["stage"], prep["stage_note"]
         s = r["summary"]
         warnings = ([stage_note + "."] if stage_note else []) + s["warnings"]
         status = "ok" if not warnings else "warning: " + " ".join(warnings)
@@ -638,7 +737,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             "peak_dekad": s["peak_dekad"] or NULL, "peak_mm": _round(s["peak_dekad_NIR_mm"]),
             "miss_days": s["missing_days"], "nir_period": s["nir_period"],
             "pe_frac": pe_fraction, "elev_m": _round(s["elevation_m"]),
-            "clim_src": s["climate_source"], "station_km": _round(prep.get("station_km")),
+            "clim_src": s["climate_source"][:254], "station_km": _round(prep.get("station_km")),
             "status": status[:1000],
             "_daily": r["daily"], "_dekad": r["dekad"], "_summary": s,
         }

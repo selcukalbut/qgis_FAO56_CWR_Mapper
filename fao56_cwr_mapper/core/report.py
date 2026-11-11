@@ -23,7 +23,11 @@ POWER_LIMITATION = (
 STATION_LIMITATIONS = (
     "Station data are used as given; quality control is limited to range checks (Tmax < Tmin "
     "swapped, relative humidity outside 0-100 % and negative values ignored).",
-    "Each field uses its nearest station; climate between stations is not interpolated.")
+    )
+NEAREST_LIMITATION = "Each field uses its nearest station; climate between stations is not interpolated."
+THIESSEN_LIMITATION = (
+    "Thiessen weighting assumes that each station represents the area closest to it; relief, "
+    "coastline and elevation differences between stations are not taken into account.")
 ESTIMATION_LIMITATION = (
     "Estimated inputs (FAO-56 missing-data procedures) are less accurate than measurements; "
     "ea from Tmin (Eq. 48) can overestimate humidity in arid climates.")
@@ -61,8 +65,21 @@ def limitations(settings):
     c = _climate(settings)
     if c["source"] == "power":
         return [POWER_LIMITATION] + COMMON_LIMITATIONS
-    extra = [ESTIMATION_LIMITATION] if c.get("estimation") else []
+    extra = [THIESSEN_LIMITATION if c.get("assignment") == "thiessen" else NEAREST_LIMITATION]
+    extra += [ESTIMATION_LIMITATION] if c.get("estimation") else []
     return list(STATION_LIMITATIONS) + extra + COMMON_LIMITATIONS
+
+
+def _assignment_line(c):
+    km = "{:g}".format(float(c.get("max_distance_km", 0)))
+    if c.get("assignment") == "thiessen":
+        return ("Polygons are weighted by the ellipsoidal area of their intersection with the Thiessen "
+                "polygons of the stations (stations farther than {} km from the field are left out); each "
+                "station's daily ETo uses the field's latitude and the station elevation, and the field's "
+                "daily ETo and rainfall are the area-weighted means. On days without data at a station the "
+                "other weights are rescaled to 1. Points use the nearest station.".format(km))
+    return ("Each field uses the nearest station within {} km; elevation for atmospheric pressure and "
+            "Rso is the station elevation.".format(km))
 
 
 def _climate_method_lines(settings):
@@ -83,8 +100,7 @@ def _climate_method_lines(settings):
         "measured or from sunshine duration (Angstrom, Eq. 35, as = 0.25, bs = 0.50); Rso from Eq. 37, "
         "albedo 0.23. Wind speed converted from {} m to 2 m (Eq. 47), at least 0.5 m/s.".format(
             "{:g}".format(float(c.get("wind_height", 2.0)))),
-        "Each field uses the nearest station within {} km; elevation for atmospheric pressure and Rso "
-        "is the station elevation.".format("{:g}".format(float(c.get("max_distance_km", 0))))]
+        _assignment_line(c)]
     if c.get("estimation"):
         lines.append(
             "Missing inputs are estimated with the FAO-56 procedures for missing climatic data: ea from "
@@ -185,7 +201,9 @@ def _sections(meta, settings, results):
             ("Source", "Weather station data (CSV)"),
             ("File", c.get("file", "-")),
             ("Stations used", ", ".join(p.replace("station ", "") for p in products) or "-"),
-            ("Assignment", "nearest station within {} km".format("{:g}".format(float(c.get("max_distance_km", 0))))),
+            ("Assignment", ("Thiessen area weighting of daily ETo and rainfall, stations within {} km"
+                            if c.get("assignment") == "thiessen" else "nearest station within {} km").format(
+                "{:g}".format(float(c.get("max_distance_km", 0))))),
             ("Wind measurement height", "{} m".format("{:g}".format(float(c.get("wind_height", 2.0))))),
             ("Missing inputs", "estimated (FAO-56 Eq. 48, Eq. 50 with kRs = {:.2f}, u2 = 2 m/s)".format(
                 c.get("krs", 0.16)) if c.get("estimation") else "not estimated"),

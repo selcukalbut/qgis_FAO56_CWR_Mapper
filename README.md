@@ -97,8 +97,14 @@ Choose *Climate data source = Weather stations* and give:
 - **Station locations** – a point layer with the station ID (matching the CSV)
   and the station elevation in metres.
 
-Each field uses its nearest station within the maximum distance (`station_km`
-in the result). Missing humidity, radiation or wind can be estimated with the
+*Station assignment*: each field uses its nearest station within the maximum
+distance (`station_km` in the result), or – for polygons – **Thiessen area
+weighting**: the field is intersected with the stations' Thiessen polygons
+(built in an azimuthal equidistant projection centred on the stations) and the
+ellipsoidal intersection areas weight each station's daily ETo (computed at the
+field's latitude with the station elevation) and rainfall. Stations farther than
+the maximum distance are left out; on days a station has no data the other
+weights are rescaled. The weights are written to `stn_weight`. Missing humidity, radiation or wind can be estimated with the
 FAO-56 procedures for missing data – ea from Tmin (Eq. 48), Rs from the
 temperature range (Hargreaves, Eq. 50, kRs 0.16 interior / 0.19 coastal) and
 u2 = 2 m/s; every estimate is listed in `status` and in the run report.

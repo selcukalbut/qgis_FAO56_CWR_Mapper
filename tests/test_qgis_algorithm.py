@@ -371,6 +371,49 @@ class TestFieldAlgorithm(unittest.TestCase):
         self.assertEqual((f["clim_src"], f["status"]), ("Weather station 17056", "ok"))
         self.assertGreater(f["NIR_mm"], 0)
 
+    def thiessen_case(self, rows_for, stations, max_km=50):
+        """Square field (2 km) centred on 40.98 N 27.50 E, between the given stations."""
+        self.no_download()
+        layer = QgsVectorLayer("Polygon?crs=EPSG:4326&field=name:string&field=crop:string"
+                               "&field=planted:date", "f", "memory")
+        f = QgsFeature(layer.fields())
+        d = 0.012
+        f.setGeometry(QgsGeometry.fromPolygonXY([[QgsPointXY(27.50 - d, 40.98 - d), QgsPointXY(27.50 + d, 40.98 - d),
+                                                  QgsPointXY(27.50 + d, 40.98 + d), QgsPointXY(27.50 - d, 40.98 + d)]]))
+        f.setAttributes(["mid", "Tomato", QDate(2025, 5, 1)])
+        layer.dataProvider().addFeatures([f])
+        feats, _ = self.run_alg(layer, CLIMATE_SOURCE=1, STATION_CSV=self.station_csv(rows_for),
+                                STATION_LAYER=self.station_layer(stations), ASSIGNMENT=1,
+                                MAX_DISTANCE_KM=max_km)
+        return feats["mid"]
+
+    def test_thiessen_half_and_half(self):
+        west_east = [("W", 27.40, 40.98, 10.0), ("E", 27.60, 40.98, 10.0)]
+        hot_cool = lambda d: {"W": "34,20,14,2,27,0", "E": "26,16,14,2,23,0"}
+        mid = self.thiessen_case(hot_cool, west_east)
+        weights = dict(p.split(":") for p in mid["stn_weight"].split())
+        self.assertEqual(set(weights), {"W", "E"})
+        self.assertAlmostEqual(float(weights["W"]), 0.5, delta=0.01)    # bisector through the field
+        self.assertTrue(mid["clim_src"].startswith("Thiessen-weighted stations"))
+        only_w = self.thiessen_case(hot_cool, west_east[:1])
+        only_e = self.thiessen_case(hot_cool, west_east[1:])
+        self.assertLess(only_e["ETo_mm"], mid["ETo_mm"])
+        self.assertLess(mid["ETo_mm"], only_w["ETo_mm"])
+        self.assertAlmostEqual(mid["ETo_mm"], (only_w["ETo_mm"] + only_e["ETo_mm"]) / 2, delta=1.5)
+        self.assertEqual(only_w["stn_weight"], "W:1.000")
+
+    def test_thiessen_distance_limit_and_reweighting(self):
+        # E is 60 km away: left out with a 50 km limit, so W alone remains
+        far = self.thiessen_case(lambda d: {"W": "30,18,14,2,25,0", "E": "26,16,14,2,23,0"},
+                                 [("W", 27.49, 40.98, 10.0), ("E", 28.21, 40.98, 10.0)], max_km=50)
+        self.assertEqual(far["stn_weight"], "W:1.000")
+        # E has no data in July: its weight goes to W on those days, with a warning
+        gaps = self.thiessen_case(lambda d: {"W": "30,18,14,2,25,0",
+                                             "E": "-,-,-,-,-,-" if d.month == 7 else "30,18,14,2,25,0"},
+                                  [("W", 27.40, 40.98, 10.0), ("E", 27.60, 40.98, 10.0)])
+        self.assertIn("Station weights rescaled on 31 season day(s)", gaps["status"])
+        self.assertEqual(gaps["miss_days"], 0)
+
     def test_provider_registration(self):
         from fao56_cwr_mapper.qgis_processing.provider import FAO56Provider
         provider = FAO56Provider()
