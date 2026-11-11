@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased (0.2.0)
+## 0.2.0 – 2026-11-11 (experimental)
+
+- QGIS 4: `qgisMaximumVersion=4.99`, so the plugin is listed for QGIS 3.22+
+  and 4.x. The code uses Qt6-compatible names (0.1.1 passed the plugin
+  repository's Qt6 check) but has not yet been run on QGIS 4; feedback welcome.
 
 - Weather station data: CSV with one row per station and day (English or
   Turkish column names, `,` `;` or tab, decimal comma, UTF-8 or Windows-1254)

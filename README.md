@@ -4,7 +4,7 @@ Computes FAO-56 Penman-Monteith reference evapotranspiration (ETo), single crop
 coefficient crop evapotranspiration (ETc = Kc × ETo), effective rainfall and net
 irrigation requirement (mm, m³, m³/da, m³/ha) for polygon or point layers.
 
-**Status:** v0.1.0 – experimental; calculation core and a QGIS Processing algorithm, no dialog yet.
+**Status:** v0.2.0 – experimental; a QGIS Processing algorithm (QGIS 3.22+, QGIS 4 declared but not yet tested there) with NASA POWER, Open-Meteo or weather station climate data. No soil water balance yet (planned for v0.3).
 
 ## Layout
 
@@ -171,7 +171,7 @@ or compiled files). To test the zip as an installed plugin in headless QGIS,
 isolated from the repository code (macOS paths shown):
 
 ```bash
-cd /tmp && /Applications/QGIS.app/Contents/MacOS/python /path/to/repo/tools/check_plugin_zip_qgis.py /path/to/repo/dist/fao56_cwr_mapper-0.0.13.zip
+cd /tmp && /Applications/QGIS.app/Contents/MacOS/python /path/to/repo/tools/check_plugin_zip_qgis.py /path/to/repo/dist/fao56_cwr_mapper-0.2.0.zip
 ```
 
 Before uploading, run the same security scanners as plugins.qgis.org
@@ -195,6 +195,10 @@ Fields that fall in the same pair of grid cells share one download, so large
 layers need far fewer requests (200 points across Thrace: 28 downloads).
 Near coasts or in complex terrain the grid can differ markedly from local
 conditions; local station data is recommended where available.
+
+Open-Meteo: Weather data by Open-Meteo.com, CC BY 4.0; generated using
+Copernicus Climate Change Service information. The free API is for
+non-commercial use only (see the Open-Meteo section above).
 
 ## License
 
