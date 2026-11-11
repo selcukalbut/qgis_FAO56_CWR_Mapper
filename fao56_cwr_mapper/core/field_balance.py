@@ -43,6 +43,12 @@ def _sum(values):
     return sum(v for v in values if v is not None)
 
 
+def _total(values):
+    """Sum of the values present, or None when there is none (no data is not zero)."""
+    present = [v for v in values if v is not None]
+    return sum(present) if present else None
+
+
 def field_water_balance(eto_rows, kc_crop, stage, planting_date, area_m2=None,
                         pe_fraction=0.80, nir_period=NIR_DEKAD, efficiency=None,
                         today=None, effective_rainfall=None):
@@ -94,16 +100,16 @@ def field_water_balance(eto_rows, kc_crop, stage, planting_date, area_m2=None,
         for p in periods["dekad"]:
             if p["NIR"] is not None:
                 p["NIR"] = _sum(d["NIR"] for d in daily if d["dekad"] == p["period"])
-    nir_total = _sum(p["NIR"] for p in periods["dekad"])
+    nir_total = _total(p["NIR"] for p in periods["dekad"])
     for p in periods["month"]:          # monthly NIR follows the chosen period
-        p["NIR"] = _sum(x["NIR"] for x in periods["dekad"] if x["period"].startswith(p["period"]))
+        p["NIR"] = _total(x["NIR"] for x in periods["dekad"] if x["period"].startswith(p["period"]))
 
     peak = max(periods["dekad"], key=lambda p: p["NIR"] if p["NIR"] is not None else -1,
                default=None)
     summary = {
         "season_start": series[0][0], "season_end": series[-1][0], "season_days": len(series),
-        "ETo_mm": _sum(d["ETo"] for d in daily), "ETc_mm": _sum(d["ETc"] for d in daily),
-        "P_mm": _sum(d["P"] for d in daily), "Pe_mm": _sum(d["Pe"] for d in daily),
+        "ETo_mm": _total(d["ETo"] for d in daily), "ETc_mm": _total(d["ETc"] for d in daily),
+        "P_mm": _total(d["P"] for d in daily), "Pe_mm": _total(d["Pe"] for d in daily),
         "NIR_mm": nir_total, "nir_period": nir_period,
         "pe_fraction": None if pe_spec.per_period else pe_spec.fraction,
         "pe_method": pe_spec.method, "pe_description": pe_spec.describe(),
@@ -120,7 +126,7 @@ def field_water_balance(eto_rows, kc_crop, stage, planting_date, area_m2=None,
     summary.update(volumes(nir_total, area_m2))
     if efficiency is not None:
         summary["efficiency"] = efficiency
-        summary["GIR_mm"] = nir_total / efficiency
+        summary["GIR_mm"] = None if nir_total is None else nir_total / efficiency
     summary["warnings"] = _warnings(daily, summary, today)
     return {"daily": daily, "dekad": periods["dekad"], "month": periods["month"],
             "summary": summary}
@@ -160,12 +166,13 @@ def _aggregate(daily, key):
 
 
 def volumes(nir_mm, area_m2):
-    """Irrigation volumes from a depth; per-area values need no area."""
-    out = {"NIR_m3_per_da": water_balance.volume_per_decare(nir_mm),
-           "NIR_m3_per_ha": water_balance.volume_per_hectare(nir_mm)}
+    """Irrigation volumes from a depth; per-area values need no area. No depth gives no volume."""
+    known = nir_mm is not None
+    out = {"NIR_m3_per_da": water_balance.volume_per_decare(nir_mm) if known else None,
+           "NIR_m3_per_ha": water_balance.volume_per_hectare(nir_mm) if known else None}
     if area_m2 is not None:
         out["area_m2"] = area_m2
-        out["NIR_m3"] = water_balance.depth_to_volume_m3(nir_mm, area_m2)
+        out["NIR_m3"] = water_balance.depth_to_volume_m3(nir_mm, area_m2) if known else None
     return out
 
 
@@ -194,7 +201,9 @@ def _warnings(daily, summary, today):
     gaps = summary["missing_days"] - no_data
     if gaps:
         w.append("{} season day(s) have incomplete climate data (missing ETo or rainfall).".format(gaps))
-    if summary["missing_days"]:
+    if summary["NIR_mm"] is None:
+        w.append("No dekad has complete climate data, so no net irrigation requirement is given.")
+    elif summary["missing_days"]:
         w.append("Totals cover only days with complete data; periods with missing days have "
                  "no net irrigation value.")
     return w

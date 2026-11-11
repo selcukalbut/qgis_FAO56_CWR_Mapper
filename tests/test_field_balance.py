@@ -26,6 +26,17 @@ def climate(eto=5.0, rain=None, drop=()):
 
 
 class TestFieldBalance(unittest.TestCase):
+    def test_no_rainfall_record_gives_no_nir(self):
+        # e.g. an airport station that reports no precipitation: NIR unknown, not zero
+        rows = [dict(r, precip=None) for r in climate()]
+        s = fb.field_water_balance(rows, CROP, STAGE, PLANT, area_m2=10000, efficiency=0.8,
+                                   today=TODAY)["summary"]
+        self.assertAlmostEqual(s["ETo_mm"], 200.0)
+        for key in ("P_mm", "Pe_mm", "NIR_mm", "NIR_m3", "NIR_m3_per_da", "NIR_m3_per_ha", "GIR_mm"):
+            self.assertIsNone(s[key], key)
+        self.assertEqual(s["missing_days"], 40)
+        self.assertTrue(any("no net irrigation requirement" in w for w in s["warnings"]))
+
     def test_dry_season_by_hand(self):
         # Kc sum = 10*0.5 + (5 + 0.05*55) + 10*1.0 + (10 - 0.05*55) = 30 -> ETc = 150 mm
         r = fb.field_water_balance(climate(), CROP, STAGE, PLANT, area_m2=10000, today=TODAY)

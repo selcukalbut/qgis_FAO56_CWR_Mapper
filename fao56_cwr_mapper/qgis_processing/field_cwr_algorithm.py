@@ -248,7 +248,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                      "Open-Meteo ERA5 reanalysis (global, downloaded; non-commercial use only)"],
             defaultValue=0))
         self.addParameter(QgsProcessingParameterEnum(
-            self.OPEN_METEO_MODEL, "Open-Meteo model",
+            self.OPEN_METEO_MODEL, "Open-Meteo model (Open-Meteo source only)",
             options=["ERA5-Seamless (ERA5-Land + ERA5)", "ERA5 (0.25 degree)",
                      "Best match (ERA5 + ECMWF IFS, no delay)"], defaultValue=0))
         self.addParameter(QgsProcessingParameterFile(
@@ -318,6 +318,10 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             self.OUTPUT_REPORT, "Run report (method, data source, results, warnings)",
             fileFilter="HTML files (*.html);;Text files (*.txt)", optional=True,
             createByDefault=False))
+        # shown as 50.0 instead of 50.000000 in the dialog
+        for name, decimals in ((self.MAX_DISTANCE_KM, 1), (self.WIND_HEIGHT, 1), (self.PE_FRACTION, 2),
+                               (self.SOIL_STORAGE_MM, 0), (self.EFFICIENCY, 2)):
+            self.parameterDefinition(name).setMetadata({"widget_wrapper": {"decimals": decimals}})
 
     # --- helpers ------------------------------------------------------------
 
