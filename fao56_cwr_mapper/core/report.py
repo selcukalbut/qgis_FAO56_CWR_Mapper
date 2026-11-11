@@ -9,12 +9,26 @@ import html
 import os
 from datetime import datetime
 
+from ..climate_sources import open_meteo
 from ..climate_sources.nasa_power import ATTRIBUTION
 
 FAO56_REFERENCE = (
     "Allen, R.G., Pereira, L.S., Raes, D., Smith, M. (1998). Crop evapotranspiration - "
     "Guidelines for computing crop water requirements. FAO Irrigation and Drainage Paper 56. Rome: FAO.")
 POWER_REFERENCE = "NASA POWER Project, Daily API (https://power.larc.nasa.gov). " + ATTRIBUTION
+
+OPEN_METEO_REFERENCES = (
+    "Zippenfenig, P. (2023). Open-Meteo.com Weather API. Zenodo. "
+    "https://doi.org/10.5281/ZENODO.7970649",
+    "Hersbach, H. et al. (2023). ERA5 hourly data on single levels from 1940 to present. Copernicus "
+    "Climate Change Service (C3S) Climate Data Store. https://doi.org/10.24381/cds.adbb2d47",
+    "Muñoz Sabater, J. (2019). ERA5-Land hourly data from 1950 to present. Copernicus Climate Change "
+    "Service (C3S) Climate Data Store. https://doi.org/10.24381/CDS.E2161BAC",
+)
+OPEN_METEO_LIMITATION = (
+    "Climate data come from the Open-Meteo Historical Weather API (ECMWF ERA5 / ERA5-Land "
+    "reanalysis, 0.25 and 0.1 degree grids; temperatures are downscaled to a 90 m elevation model). "
+    "Reanalysis smooths local extremes and coastal effects; compare with station data. " + open_meteo.TERMS)
 
 POWER_LIMITATION = (
     "Climate data come from NASA POWER, a global grid (meteorology 0.5 x 0.625 degrees, solar "
@@ -58,13 +72,20 @@ def _climate(settings):
 
 
 def references(settings):
-    return [FAO56_REFERENCE] + ([POWER_REFERENCE] if _climate(settings)["source"] == "power" else [])
+    source = _climate(settings)["source"]
+    if source == "power":
+        return [FAO56_REFERENCE, POWER_REFERENCE]
+    if source == "open_meteo":
+        return [FAO56_REFERENCE] + list(OPEN_METEO_REFERENCES)
+    return [FAO56_REFERENCE]
 
 
 def limitations(settings):
     c = _climate(settings)
     if c["source"] == "power":
         return [POWER_LIMITATION] + COMMON_LIMITATIONS
+    if c["source"] == "open_meteo":
+        return [OPEN_METEO_LIMITATION] + COMMON_LIMITATIONS
     extra = [THIESSEN_LIMITATION if c.get("assignment") == "thiessen" else NEAREST_LIMITATION]
     extra += [ESTIMATION_LIMITATION] if c.get("estimation") else []
     return list(STATION_LIMITATIONS) + extra + COMMON_LIMITATIONS
@@ -92,6 +113,17 @@ def _climate_method_lines(settings):
             "from Eq. 37 and albedo 0.23. Wind speed at 2 m as provided by NASA POWER (WS2M), at least "
             "0.5 m/s.",
             "Elevation for atmospheric pressure and Rso: elevation of the NASA POWER grid cell.",
+        ]
+    if c["source"] == "open_meteo":
+        return [
+            "Reference evapotranspiration ETo: FAO-56 Penman-Monteith, daily step (Eq. 6), soil heat "
+            "flux G = 0, computed by the plugin from Open-Meteo daily values (model {}): Tmax, Tmin, "
+            "mean dewpoint (ea from Eq. 14; mean RH, Eq. 19, when dewpoint is missing), shortwave "
+            "radiation sum with Rso from Eq. 37 and albedo 0.23, and mean 10 m wind speed converted to "
+            "2 m (Eq. 47), at least 0.5 m/s. Open-Meteo's own FAO ET0 is not used.".format(
+                open_meteo.MODEL_NAMES.get(c.get("model"), c.get("model", "-"))),
+            "Elevation for atmospheric pressure and Rso: point elevation returned by Open-Meteo (90 m "
+            "elevation model). Fields within about 1 km (0.01 degree) share one download.",
         ]
     lines = [
         "Reference evapotranspiration ETo: FAO-56 Penman-Monteith, daily step (Eq. 6), soil heat flux "
@@ -125,7 +157,7 @@ def method_lines(settings):
         "Effective rainfall Pe = {:.2f} x P (fixed fraction).".format(settings["pe_fraction"]),
         "Net irrigation requirement " + nir + ". Periods with missing climate data get no value; "
         "missing days are never filled{}.".format(
-            "" if _climate(settings)["source"] == "power" else " (only individual inputs are estimated)"
+            "" if _climate(settings)["source"] in ("power", "open_meteo") else " (only individual inputs are estimated)"
             if _climate(settings).get("estimation") else ""),
         "Volumes from ellipsoidal field area: 1 mm = 1 m3/da = 10 m3/ha.",
     ]
@@ -196,6 +228,17 @@ def _sections(meta, settings, results):
     products = sorted({p for r in results for p in r.get("climate_sources") or []})
     versions = sorted({r["api_version"] for r in results if r.get("api_version")})
     c = _climate(settings)
+    if c["source"] == "open_meteo":
+        data = [
+            ("Source", "Open-Meteo Historical Weather API (archive-api.open-meteo.com)"),
+            ("Model", open_meteo.MODEL_NAMES.get(c.get("model"), c.get("model", "-"))),
+            ("Downloads", str(c["downloads"]) if c.get("downloads") is not None else "-"),
+            ("Seasons covered", "{} to {}".format(min(starts), max(ends)) if starts else "-"),
+            ("Run date", meta.get("run_time", "-")),
+            ("Terms", open_meteo.TERMS),
+            ("Attribution", open_meteo.ATTRIBUTION),
+        ]
+        return inputs, data, _summary(t), _warning_rows(results)
     if c["source"] != "power":
         data = [
             ("Source", "Weather station data (CSV)"),

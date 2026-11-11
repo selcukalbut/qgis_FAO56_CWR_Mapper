@@ -34,7 +34,7 @@ from qgis.core import (
 from qgis.PyQt.QtCore import QDate, QDateTime
 
 from .. import pipeline
-from ..climate_sources import nasa_power, station_csv
+from ..climate_sources import nasa_power, open_meteo, station_csv
 from ..climate_sources.nasa_power import ATTRIBUTION
 from ..core import crop_table, eto_series, field_balance, report, stage_table
 from . import compat, network
@@ -42,6 +42,7 @@ from .styling import NirStylePostProcessor
 
 WGS84 = QgsCoordinateReferenceSystem("EPSG:4326")
 NIR_PERIODS = [field_balance.NIR_DEKAD, field_balance.NIR_DAILY]
+SOURCE_POWER, SOURCE_STATIONS, SOURCE_OPEN_METEO = 0, 1, 2
 
 # name, kind (compat.make_field), length, precision
 RESULT_FIELDS = [
@@ -120,6 +121,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
     EFFICIENCY = "EFFICIENCY"
     USE_CACHE = "USE_CACHE"
     CLIMATE_SOURCE = "CLIMATE_SOURCE"
+    OPEN_METEO_MODEL = "OPEN_METEO_MODEL"
     STATION_CSV = "STATION_CSV"
     STATION_LAYER = "STATION_LAYER"
     STATION_ID_FIELD = "STATION_ID_FIELD"
@@ -159,7 +161,8 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
     def shortHelpString(self):
         return (
             "Computes FAO-56 crop water requirement for each field (polygon) or point: "
-            "daily Penman-Monteith ETo from NASA POWER, single crop coefficient ETc = Kc x ETo, "
+            "daily Penman-Monteith ETo from NASA POWER, Open-Meteo (ERA5) or weather station "
+            "data, single crop coefficient ETc = Kc x ETo, "
             "effective rainfall Pe as a fixed fraction of rainfall and net irrigation "
             "requirement NIR = max(0, ETc - Pe) per dekad (CROPWAT-like, default) or per day.\n\n"
             "Crop: a text field with the crop name exactly as listed in the Crop parameter "
@@ -181,6 +184,14 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             "overlaps (weights in 'stn_weight'). Missing humidity, radiation or wind can be "
             "estimated with the FAO-56 procedures (Eq. 48, Eq. 50, 2 m/s); every estimate is "
             "reported in 'status'.\n\n"
+            "Open-Meteo: ECMWF ERA5 / ERA5-Land reanalysis from the Open-Meteo Historical Weather "
+            "API (no key). ERA5-Seamless (default) combines ERA5-Land temperature and humidity "
+            "(0.1 degree) with ERA5 wind and radiation (0.25 degree); the most recent ~5 days are "
+            "not yet available ('miss_days'). Best match also blends the ECMWF IFS forecast model. "
+            "The plugin computes ETo itself from the daily values (wind converted from 10 m, "
+            "Eq. 47). Fields within about 1 km share one download. NOTE: the free Open-Meteo API "
+            "may only be used for non-commercial purposes (https://open-meteo.com/en/terms). "
+            + open_meteo.ATTRIBUTION + "\n\n"
             "Climate is queried at a point inside each polygon. NASA POWER is a coarse global "
             "grid (meteorology 0.5 x 0.625 degree, solar radiation 1 x 1 degree); fields in the "
             "same cells share one download. Compare with local station data where possible. "
@@ -228,7 +239,13 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         self.addParameter(QgsProcessingParameterEnum(
             self.CLIMATE_SOURCE, "Climate data source",
             options=["NASA POWER (global, downloaded automatically)",
-                     "Weather stations (CSV file + station point layer)"], defaultValue=0))
+                     "Weather stations (CSV file + station point layer)",
+                     "Open-Meteo ERA5 reanalysis (global, downloaded; non-commercial use only)"],
+            defaultValue=0))
+        self.addParameter(QgsProcessingParameterEnum(
+            self.OPEN_METEO_MODEL, "Open-Meteo model",
+            options=["ERA5-Seamless (ERA5-Land + ERA5)", "ERA5 (0.25 degree)",
+                     "Best match (ERA5 + ECMWF IFS, no delay)"], defaultValue=0))
         self.addParameter(QgsProcessingParameterFile(
             self.STATION_CSV, "Station data (CSV: station, date, tmax, tmin, precip, ...)",
             extension="csv", optional=True))
@@ -509,10 +526,16 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         efficiency = self.parameterAsDouble(parameters, self.EFFICIENCY, context) or None
         cache = network.cache_dir() if self.parameterAsBoolean(parameters, self.USE_CACHE, context) else None
         stations, climate_settings, estimation = None, {"source": "power"}, None
-        if self.parameterAsEnum(parameters, self.CLIMATE_SOURCE, context) == 1:
+        source_kind = self.parameterAsEnum(parameters, self.CLIMATE_SOURCE, context)
+        if source_kind == SOURCE_STATIONS:
             stations, climate_settings = self._load_stations(parameters, context, feedback)
             if climate_settings["estimation"]:
                 estimation = eto_series.Estimation(krs=climate_settings["krs"])
+        elif source_kind == SOURCE_OPEN_METEO:
+            model = open_meteo.MODELS[self.parameterAsEnum(parameters, self.OPEN_METEO_MODEL, context)]
+            climate_settings = {"source": "open_meteo", "model": model}
+            feedback.pushInfo("Open-Meteo {}: {} {}".format(
+                open_meteo.MODEL_NAMES[model], open_meteo.TERMS, open_meteo.ATTRIBUTION))
         geod = QgsDistanceArea()
         geod.setSourceCrs(WGS84, context.transformContext())
         geod.setEllipsoid("EPSG:7030")
@@ -555,6 +578,9 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                 rec["prep"] = self._prepare_feature(
                     feat, crops, default_crop, crop_field, plant_field, default_plant, l_fields,
                     stages, mapping, region, to_wgs84, da, is_polygon)
+                if climate_settings["source"] == "open_meteo":
+                    rec["prep"]["cell"] = ("open_meteo",) + open_meteo.request_coordinates(
+                        rec["prep"]["lat"], rec["prep"]["lon"])
                 if stations:
                     self._nearest_station(rec["prep"], stations, climate_settings["max_distance_km"], geod)
                 if thiessen and is_polygon:
@@ -565,14 +591,16 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                 rec["error"] = str(exc)    # a message only: stored exceptions would keep frames alive
             records.append(rec)
 
-        # 2. one NASA POWER download per grid cell, covering all seasons in that cell
+        # 2. one download per NASA POWER grid cell or Open-Meteo request point,
+        #    covering all seasons there
         today = date.today()
         groups = {}
         for rec in records if not stations else []:
             prep = rec["prep"]
             if prep is None or prep["start"] > today:
                 continue                     # errors and future seasons are reported in step 3
-            g = groups.setdefault(prep["cell"], {"lat": prep["lat"], "lon": prep["lon"],
+            lat, lon = prep["cell"][1:] if prep["cell"][0] == "open_meteo" else (prep["lat"], prep["lon"])
+            g = groups.setdefault(prep["cell"], {"lat": lat, "lon": lon,
                                                  "start": prep["start"], "end": prep["end"]})
             g["start"], g["end"] = min(g["start"], prep["start"]), max(g["end"], prep["end"])
         series, cell_errors = {}, {}
@@ -581,6 +609,10 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             used = {r["prep"]["cell"] for r in records if r["prep"] and "station_km" in r["prep"]}
             feedback.pushInfo("{} feature(s) assigned to {} station(s); no download needed.".format(
                 len(records), len(used)))
+        elif climate_settings["source"] == "open_meteo":
+            climate_settings["downloads"] = len(groups)
+            feedback.pushInfo("{} feature(s) at {} Open-Meteo request point(s) (0.01 degree): "
+                              "{} download(s).".format(len(records), len(groups), len(groups)))
         else:
             feedback.pushInfo("{} feature(s) in {} NASA POWER grid cell(s): {} download(s).".format(
                 len(records), len(groups), len(groups)))
@@ -588,8 +620,13 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             if feedback.isCanceled():
                 break
             try:
-                series[key] = nasa_power.fetch(g["lat"], g["lon"], g["start"], min(g["end"], today),
-                                               fetcher=self.fetcher, cache_dir=cache, today=today)
+                if key[0] == "open_meteo":
+                    series[key] = open_meteo.fetch(g["lat"], g["lon"], g["start"], min(g["end"], today),
+                                                   model=climate_settings["model"], fetcher=self.fetcher,
+                                                   cache_dir=cache, today=today)
+                else:
+                    series[key] = nasa_power.fetch(g["lat"], g["lon"], g["start"], min(g["end"], today),
+                                                   fetcher=self.fetcher, cache_dir=cache, today=today)
             except Exception as exc:
                 cell_errors[key] = str(exc)
             feedback.setProgress(80.0 * (n + 1) / len(groups))

@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased (0.2.0)
+
+- Weather station data: CSV with one row per station and day (English or
+  Turkish column names, `,` `;` or tab, decimal comma, UTF-8 or Windows-1254)
+  and a station point layer with ID and elevation. Nearest station within a
+  maximum distance, or Thiessen area weighting of daily ETo and rainfall for
+  polygons (weights in `stn_weight`, reweighting on days a station is missing).
+- FAO-56 procedures for missing station data: ea from Tmin (Eq. 48), Rs from
+  the temperature range (Eq. 50, kRs 0.16 / 0.19), u2 = 2 m/s; sunshine hours
+  (Eq. 35), RHmax/RHmin (Eq. 17, 18), wind height conversion (Eq. 47).
+- Open-Meteo Historical Weather API as a third climate source (ERA5-Seamless,
+  ERA5 or Best match; one download per 0.01° point, local cache). The report
+  states the non-commercial terms, CC BY 4.0 attribution and citations.
+- Run report method, data source, references and limitations follow the
+  chosen climate source.
+
 ## 0.1.1 – 2026-11-03 (experimental)
 
 - Security scan fixes (0.1.0 was blocked on plugins.qgis.org): the plugin no

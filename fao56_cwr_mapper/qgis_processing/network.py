@@ -11,16 +11,16 @@ from .compat import NETWORK_NO_ERROR
 
 
 def qgis_fetcher(url):
-    """Fetcher for nasa_power.fetch using QgsBlockingNetworkRequest.
+    """Fetcher for nasa_power.fetch and open_meteo.fetch using QgsBlockingNetworkRequest.
 
-    Returns the body for HTTP 200 and for HTTP 422 (POWER's JSON error body,
-    turned into a readable message by the parser).
+    Returns the body for HTTP 200 and for the JSON error bodies of HTTP 422
+    (NASA POWER) and 400 (Open-Meteo), turned into readable messages by the parsers.
     """
     request = QgsBlockingNetworkRequest()
     error = request.get(QNetworkRequest(QUrl(url)), forceRefresh=True)
     reply = request.reply()
     status = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
-    if error != NETWORK_NO_ERROR and status != 422:
+    if error != NETWORK_NO_ERROR and status not in (400, 422):
         raise PowerError("POWER request failed: {}".format(request.errorMessage()))
     return bytes(reply.content())
 

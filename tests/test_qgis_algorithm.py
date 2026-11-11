@@ -29,8 +29,29 @@ WEATHER = {"T2M_MAX": 30.0, "T2M_MIN": 18.0, "T2MDEW": 14.0, "RH2M": 55.0, "WS2M
            "ALLSKY_SFC_SW_DWN": 25.0, "PRECTOTCORR": 0.0}
 
 
+OPEN_METEO = {"temperature_2m_max": 30.0, "temperature_2m_min": 18.0, "dew_point_2m_mean": 14.0,
+              "relative_humidity_2m_mean": 55.0, "wind_speed_10m_mean": 2.67,
+              "shortwave_radiation_sum": 25.0, "precipitation_sum": 0.0, "et0_fao_evapotranspiration": 5.0}
+OPEN_METEO_UNITS = {"temperature_2m_max": "°C", "temperature_2m_min": "°C", "dew_point_2m_mean": "°C",
+                    "relative_humidity_2m_mean": "%", "wind_speed_10m_mean": "m/s",
+                    "shortwave_radiation_sum": "MJ/m²", "precipitation_sum": "mm",
+                    "et0_fao_evapotranspiration": "mm"}
+
+
+def fake_open_meteo(q, null_last=0):
+    start = date.fromisoformat(q["start_date"][0])
+    end = date.fromisoformat(q["end_date"][0])
+    n = (end - start).days + 1
+    daily = {v: [x] * (n - null_last) + [None] * null_last for v, x in OPEN_METEO.items()}
+    daily["time"] = [(start + timedelta(days=k)).isoformat() for k in range(n)]
+    return json.dumps({"latitude": float(q["latitude"][0]), "longitude": float(q["longitude"][0]),
+                       "elevation": 100.0, "daily_units": OPEN_METEO_UNITS, "daily": daily}).encode()
+
+
 def fake_fetcher(url):
     q = parse_qs(urlparse(url).query)
+    if "open-meteo.com" in url:
+        return fake_open_meteo(q)
     start = datetime.strptime(q["start"][0], "%Y%m%d").date()
     end = datetime.strptime(q["end"][0], "%Y%m%d").date()
     days = [(start + timedelta(days=k)).strftime("%Y%m%d") for k in range((end - start).days + 1)]
@@ -413,6 +434,54 @@ class TestFieldAlgorithm(unittest.TestCase):
                                   [("W", 27.40, 40.98, 10.0), ("E", 27.60, 40.98, 10.0)])
         self.assertIn("Station weights rescaled on 31 season day(s)", gaps["status"])
         self.assertEqual(gaps["miss_days"], 0)
+
+    def test_open_meteo(self):
+        calls = []
+
+        def counting(url):
+            calls.append(url)
+            return fake_fetcher(url)
+
+        self.Alg.fetcher = staticmethod(counting)
+        self.addCleanup(setattr, self.Alg, "fetcher", staticmethod(fake_fetcher))
+        tmp = tempfile.mkdtemp()
+        path = os.path.join(tmp, "report.html")
+        feats, _ = self.run_alg(self.polygon_layer(), CLIMATE_SOURCE=2, PLANTING_DATE=QDate(2025, 5, 1),
+                                OUTPUT_REPORT=path)
+        # three valid fields 500 m apart: one request point per 0.01 degree
+        points = {(parse_qs(urlparse(u).query)["latitude"][0], parse_qs(urlparse(u).query)["longitude"][0])
+                  for u in calls}
+        self.assertEqual(len(calls), len(points))
+        self.assertTrue(all("models=era5_seamless" in u and "wind_speed_unit=ms" in u for u in calls))
+        ok = [f for f in feats.values() if f["status"] == "ok"]
+        self.assertEqual(len(ok), 2)
+        self.assertTrue(all(f["clim_src"].startswith("Open-Meteo ERA5-Seamless") for f in ok))
+        self.assertTrue(all(f["elev_m"] == 100.0 for f in ok))
+        # same weather as the NASA POWER fake (2.67 m/s at 10 m is 2.0 m/s at 2 m): same ETo
+        power, _ = self.run_alg(self.polygon_layer(), PLANTING_DATE=QDate(2025, 5, 1))
+        for name in ("tomato_default", "sunflower"):
+            self.assertAlmostEqual(feats[name]["ETo_mm"], power[name]["ETo_mm"], delta=0.5)
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        for part in ("Open-Meteo Historical Weather API", "non-commercial", "Weather data by Open-Meteo.com",
+                     "Zippenfenig", "ERA5-Seamless"):
+            self.assertIn(part, text)
+        self.assertNotIn("NASA POWER Project", text)
+
+        del calls[:]
+        self.run_alg(self.polygon_layer(), CLIMATE_SOURCE=2, OPEN_METEO_MODEL=2,
+                     PLANTING_DATE=QDate(2025, 5, 1))
+        self.assertTrue(calls and all("models=best_match" in u for u in calls))
+
+    def test_open_meteo_delay_counts_missing_days(self):
+        def delayed(url):
+            return fake_open_meteo(parse_qs(urlparse(url).query), null_last=5)
+
+        self.Alg.fetcher = staticmethod(delayed)
+        self.addCleanup(setattr, self.Alg, "fetcher", staticmethod(fake_fetcher))
+        feats, _ = self.run_alg(self.polygon_layer(), CLIMATE_SOURCE=2, PLANTING_DATE=QDate(2025, 5, 1))
+        self.assertEqual(feats["tomato_default"]["miss_days"], 5)
+        self.assertTrue(feats["tomato_default"]["status"].startswith("warning"))
 
     def test_provider_registration(self):
         from fao56_cwr_mapper.qgis_processing.provider import FAO56Provider

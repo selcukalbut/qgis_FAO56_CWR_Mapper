@@ -17,9 +17,9 @@ fao56_cwr_mapper/        QGIS plugin package (build the zip with tools/build_plu
   core/stage_table.py    Stage lengths from FAO-56 Table 11, Table 11/12 crop mapping
   core/field_balance.py  ETc, effective rainfall, net irrigation per day/dekad/month/season
   core/report.py         Run report (text/HTML): method, data source, results, warnings
-  pipeline.py            Point chain: NASA POWER -> ETo -> ETc -> net irrigation
+  pipeline.py            Point chain: climate -> ETo -> ETc -> net irrigation
   qgis_processing/       Processing provider and field algorithm (QGIS network stack)
-  climate_sources/       NASA POWER daily point client (with local cache), station CSV reader
+  climate_sources/       NASA POWER and Open-Meteo clients (with local cache), station CSV reader
   data/                  FAO-56 Tables 11/12 as CSV, Kc range variants, crop mapping
 tests/                   Unit tests against FAO-56 worked examples (no QGIS needed)
 sample_data/             Example field layer (Tekirdağ)
@@ -71,8 +71,9 @@ PYTHONPATH=/Applications/QGIS.app/Contents/Resources/qgis/python/plugins:. /Appl
 | 14 | u₂ from 10 m | 2.4 m/s | ✓ |
 | 17 | Daily ETo, all intermediates (Brussels, 6 July) | 3.9 mm/day | 3.88 |
 
-Cross-check: fed with Open-Meteo's own daily inputs (Tekirdağ, July 2025) the
-core reproduces Open-Meteo's FAO-56 ET0 monthly total within 0.1 %.
+Cross-check: fed with Open-Meteo's own daily inputs (Tekirdağ, 1 May – 30 Sep
+2025) the core reproduces Open-Meteo's FAO-56 ET0 season total within 0.14 %
+(ERA5-Seamless: 836.4 vs 837.6 mm; Best match 0.03 %, ERA5 1.2 %).
 
 ## Weather station data
 
@@ -109,6 +110,25 @@ FAO-56 procedures for missing data – ea from Tmin (Eq. 48), Rs from the
 temperature range (Hargreaves, Eq. 50, kRs 0.16 interior / 0.19 coastal) and
 u2 = 2 m/s; every estimate is listed in `status` and in the run report.
 
+## Open-Meteo (ERA5 reanalysis)
+
+*Climate data source = Open-Meteo* downloads daily ECMWF ERA5 / ERA5-Land
+reanalysis from the [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api)
+(no key). Models: **ERA5-Seamless** (default; ERA5-Land 0.1° temperature and
+humidity with ERA5 0.25° wind and radiation), **ERA5** (0.25°) and **Best match**
+(also blends the ECMWF IFS 9 km model, recent days without delay). ERA5 data
+arrive with about 5 days delay; those days count as missing. The plugin computes
+ETo itself from Tmax, Tmin, mean dewpoint, shortwave radiation and the mean 10 m
+wind (converted to 2 m, Eq. 47); elevation is the point elevation Open-Meteo
+returns (90 m DEM). Fields within about 1 km (0.01°) share one download.
+
+**Terms:** the free Open-Meteo API may only be used for non-commercial purposes
+([terms](https://open-meteo.com/en/terms)); commercial users need an Open-Meteo
+subscription or another source. Data are CC BY 4.0: *Weather data by
+Open-Meteo.com; generated using Copernicus Climate Change Service information.*
+The run report lists the attribution and the citations (Zippenfenig 2023;
+Hersbach et al. 2023; Muñoz Sabater 2019).
+
 ## Building the plugin zip
 
 ```bash
@@ -131,7 +151,7 @@ Before uploading, run the same security scanners as plugins.qgis.org
 pip install bandit detect-secrets flake8
 bandit -r fao56_cwr_mapper
 detect-secrets scan fao56_cwr_mapper
-flake8 --select=F821,F823,F831,E901,E902,E999 fao56_cwr_mapper
+flake8 --select=F821,F823,F831,E901,E902,E999,F401,F841 fao56_cwr_mapper
 ```
 
 ## Data sources and attribution

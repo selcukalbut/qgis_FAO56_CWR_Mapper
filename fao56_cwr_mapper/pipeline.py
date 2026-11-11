@@ -1,6 +1,6 @@
 """Point/field calculation chain, independent of QGIS.
 
-Climate (NASA POWER or station) -> FAO-56 ETo -> Kc x ETo = ETc -> Pe -> net irrigation.
+Climate (NASA POWER, Open-Meteo or station) -> FAO-56 ETo -> Kc x ETo = ETc -> Pe -> net irrigation.
 The QGIS layer/Processing code calls ``run_field`` once per field centroid.
 """
 
@@ -44,8 +44,15 @@ def run_field(latitude, longitude, kc_crop, stage, planting_date, area_m2=None,
         or "NASA POWER daily ({})".format(", ".join(series.sources)),
         "climate_grid_elevation_m": series.elevation,
         "climate_sources": list(series.sources), "climate_api_version": series.api_version,
-        "attribution": None if hasattr(series, "station_id") else nasa_power.ATTRIBUTION,
+        "attribution": getattr(series, "attribution",
+                               None if hasattr(series, "station_id") else nasa_power.ATTRIBUTION),
     })
+    reference = getattr(series, "reference_eto", None)
+    if reference:
+        # The data provider's own FAO ETo over the computed season days, for comparison only
+        days = [r["day"] for r in eto_rows if not r["missing"] and start <= r["day"] <= min(end, today)]
+        values = [reference.get(d) for d in days]
+        result["summary"]["reference_eto_mm"] = (sum(values) if values and None not in values else None)
     return result
 
 
