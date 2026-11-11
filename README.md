@@ -150,6 +150,15 @@ Open-Meteo.com; generated using Copernicus Climate Change Service information.*
 The run report lists the attribution and the citations (Zippenfenig 2023;
 Hersbach et al. 2023; Muñoz Sabater 2019).
 
+## Comparing the climate sources
+
+`docs/source_comparison.md` (Turkish) compares NASA POWER and Open-Meteo on the
+sample fields for the 2024 seasons, with the three effective rainfall methods;
+`tools/validation/compare_sources.py` reproduces it (QGIS Python). The script
+can add the NOAA GSOD record of the Tekirdağ station; because GSOD data of
+non-US stations fall under WMO Resolution 40, those data and results stay in
+the gitignored `tools/validation/local/` and `docs/local/`.
+
 ## Building the plugin zip
 
 ```bash

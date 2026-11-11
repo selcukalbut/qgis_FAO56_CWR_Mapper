@@ -11,3 +11,7 @@ Table_11.rtf
 # Local copy of the Sulama Programlama web app (separate project)
 Sulama_Program/
 dist/
+
+# Station data under WMO Resolution 40 (NOAA GSOD), local comparisons only
+tools/validation/local/
+docs/local/
