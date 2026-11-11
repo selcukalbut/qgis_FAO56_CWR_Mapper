@@ -2,6 +2,7 @@
 
 import csv
 import difflib
+import os
 from datetime import date
 
 from qgis.core import (
@@ -12,6 +13,7 @@ from qgis.core import (
     QgsDistanceArea,
     QgsFeature,
     QgsFields,
+    QgsPointXY,
     QgsProcessingAlgorithm,
     QgsProcessingException,
     QgsProcessingParameterBoolean,
@@ -30,9 +32,9 @@ from qgis.core import (
 from qgis.PyQt.QtCore import QDate, QDateTime
 
 from .. import pipeline
-from ..climate_sources import nasa_power
+from ..climate_sources import nasa_power, station_csv
 from ..climate_sources.nasa_power import ATTRIBUTION
-from ..core import crop_table, field_balance, report, stage_table
+from ..core import crop_table, eto_series, field_balance, report, stage_table
 from . import compat, network
 from .styling import NirStylePostProcessor
 
@@ -62,6 +64,7 @@ RESULT_FIELDS = [
     ("pe_frac", "double", 5, 2),
     ("elev_m", "double", 8, 1),
     ("clim_src", "string", 80, 0),
+    ("station_km", "double", 8, 1),
     ("status", "string", 1000, 0),   # shapefile output truncates to 254
 ]
 DAILY_COLUMNS = ["fid", "date", "dekad", "stage", "Kc", "ETo", "ETc", "P", "Pe", "NIR"]
@@ -113,6 +116,15 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
     NIR_PERIOD = "NIR_PERIOD"
     EFFICIENCY = "EFFICIENCY"
     USE_CACHE = "USE_CACHE"
+    CLIMATE_SOURCE = "CLIMATE_SOURCE"
+    STATION_CSV = "STATION_CSV"
+    STATION_LAYER = "STATION_LAYER"
+    STATION_ID_FIELD = "STATION_ID_FIELD"
+    STATION_ELEV_FIELD = "STATION_ELEV_FIELD"
+    MAX_DISTANCE_KM = "MAX_DISTANCE_KM"
+    WIND_HEIGHT = "WIND_HEIGHT"
+    ESTIMATE_MISSING = "ESTIMATE_MISSING"
+    KRS = "KRS"
     OUTPUT = "OUTPUT"
     OUTPUT_DAILY = "OUTPUT_DAILY"
     OUTPUT_DEKAD = "OUTPUT_DEKAD"
@@ -156,6 +168,13 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             "example planted in the same month is used and 'status' carries a warning that "
             "names the choice and the other examples for that month. The option used is "
             "written to 'stage_used'; local stage lengths are always preferable.\n\n"
+            "Weather stations: a CSV file with one row per station and day (columns station, date, "
+            "tmax, tmin, precip and, where available, tdew or rhmax/rhmin or rh, u2 or wind, rs or "
+            "sunshine hours; English or Turkish names, ; and decimal comma accepted) plus a point "
+            "layer with the station ID and elevation. Each field uses its nearest station within "
+            "the maximum distance ('station_km'). Missing humidity, radiation or wind can be "
+            "estimated with the FAO-56 procedures (Eq. 48, Eq. 50, 2 m/s); every estimate is "
+            "reported in 'status'.\n\n"
             "Climate is queried at a point inside each polygon. NASA POWER is a coarse global "
             "grid (meteorology 0.5 x 0.625 degree, solar radiation 1 x 1 degree); fields in the "
             "same cells share one download. Compare with local station data where possible. "
@@ -198,6 +217,39 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         p = QgsProcessingParameterFile(
             self.USER_KC_CSV, "User crop coefficient table (CSV: crop, variant, kc_ini, kc_mid, kc_end)",
             extension="csv", optional=True)
+        p.setFlags(p.flags() | compat.FLAG_ADVANCED)
+        self.addParameter(p)
+        self.addParameter(QgsProcessingParameterEnum(
+            self.CLIMATE_SOURCE, "Climate data source",
+            options=["NASA POWER (global, downloaded automatically)",
+                     "Weather stations (CSV file + station point layer)"], defaultValue=0))
+        self.addParameter(QgsProcessingParameterFile(
+            self.STATION_CSV, "Station data (CSV: station, date, tmax, tmin, precip, ...)",
+            extension="csv", optional=True))
+        self.addParameter(QgsProcessingParameterFeatureSource(
+            self.STATION_LAYER, "Station locations (points)", [compat.SOURCE_POINT], optional=True))
+        self.addParameter(QgsProcessingParameterField(
+            self.STATION_ID_FIELD, "Station ID field (matches the CSV 'station' column)",
+            parentLayerParameterName=self.STATION_LAYER, type=compat.FIELD_ANY, optional=True,
+            defaultValue="station"))
+        self.addParameter(QgsProcessingParameterField(
+            self.STATION_ELEV_FIELD, "Station elevation field [m]",
+            parentLayerParameterName=self.STATION_LAYER, type=compat.FIELD_NUMERIC, optional=True,
+            defaultValue="elevation"))
+        self.addParameter(QgsProcessingParameterNumber(
+            self.MAX_DISTANCE_KM, "Maximum distance from a field to its station [km]",
+            type=compat.NUMBER_DOUBLE, minValue=0.0, defaultValue=50.0))
+        self.addParameter(QgsProcessingParameterNumber(
+            self.WIND_HEIGHT, "Wind measurement height of the station data [m] (2 if the CSV has u2)",
+            type=compat.NUMBER_DOUBLE, minValue=0.5, maxValue=100.0, defaultValue=2.0))
+        p = QgsProcessingParameterBoolean(
+            self.ESTIMATE_MISSING, "Estimate missing station humidity, radiation and wind (FAO-56 "
+            "Eq. 48, Eq. 50, 2 m/s)", defaultValue=True)
+        p.setFlags(p.flags() | compat.FLAG_ADVANCED)
+        self.addParameter(p)
+        p = QgsProcessingParameterEnum(
+            self.KRS, "Location for radiation estimate from temperature (Eq. 50)",
+            options=["Interior (kRs = 0.16)", "Coastal (kRs = 0.19)"], defaultValue=0)
         p.setFlags(p.flags() | compat.FLAG_ADVANCED)
         self.addParameter(p)
         self.addParameter(QgsProcessingParameterNumber(
@@ -269,6 +321,87 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             "Planting date field '{}' contains no dates (e.g. '{}'). Choose the field with "
             "planting dates or leave it empty to use the Planting date parameter.".format(name, values[0]))
 
+    def _load_stations(self, parameters, context, feedback):
+        """(list of StationSeries, report settings) from the station CSV and point layer."""
+        path = self.parameterAsFile(parameters, self.STATION_CSV, context)
+        layer = self.parameterAsSource(parameters, self.STATION_LAYER, context)
+        if not path or layer is None:
+            raise QgsProcessingException(
+                "Weather station data needs both a station CSV file and a station point layer.")
+        wind_height = self.parameterAsDouble(parameters, self.WIND_HEIGHT, context)
+        try:
+            data = station_csv.read_station_file(path, wind_height)
+        except (station_csv.StationDataError, OSError) as exc:
+            raise QgsProcessingException("Station data: {}".format(exc))
+
+        fields = layer.fields()
+        id_field = self.parameterAsString(parameters, self.STATION_ID_FIELD, context)
+        if id_field and fields.indexOf(id_field) < 0:
+            id_field = ""
+        elev_field = self.parameterAsString(parameters, self.STATION_ELEV_FIELD, context)
+        if not elev_field or fields.indexOf(elev_field) < 0:
+            raise QgsProcessingException(
+                "The station layer needs a numeric elevation field [m] (atmospheric pressure "
+                "depends on it); choose it in 'Station elevation field'.")
+        single = list(data) == [station_csv.SINGLE_STATION]
+        if not id_field and not single:
+            raise QgsProcessingException("Choose the station ID field that matches the CSV 'station' column.")
+
+        to_wgs84 = QgsCoordinateTransform(layer.sourceCrs(), WGS84, context.transformContext())
+        locations = {}
+        for f in layer.getFeatures():
+            geom = f.geometry()
+            if geom is None or geom.isEmpty():
+                continue
+            sid = _station_id(f[id_field]) if id_field else ""
+            elev = f[elev_field]
+            if elev in (None, NULL):
+                feedback.pushWarning("Station {} has no elevation; it is not used.".format(sid))
+                continue
+            pt = geom.centroid()
+            pt.transform(to_wgs84)
+            locations[sid] = (pt.asPoint().y(), pt.asPoint().x(), float(elev))
+        if single:
+            if len(locations) != 1:
+                raise QgsProcessingException(
+                    "The CSV has no 'station' column, so the station layer must contain exactly one station.")
+            only = next(iter(locations))
+            data = {only: data[station_csv.SINGLE_STATION]}
+
+        series = []
+        for sid, recs in data.items():
+            if sid not in locations:
+                feedback.pushWarning("Station '{}' is in the CSV but not in the station layer; not used.".format(sid))
+                continue
+            lat, lon, elev = locations[sid]
+            series.append(station_csv.StationSeries(sid, lat, lon, elev, recs.days))
+            for note in recs.warnings[:10]:
+                feedback.pushWarning("Station {}: {}".format(sid, note))
+            if len(recs.warnings) > 10:
+                feedback.pushWarning("Station {}: {} more data warning(s).".format(sid, len(recs.warnings) - 10))
+        if not series:
+            raise QgsProcessingException("No station of the CSV file matches a station in the layer.")
+        feedback.pushInfo("Loaded {} station(s) from {}.".format(len(series), os.path.basename(path)))
+        settings = {"source": "station", "file": os.path.basename(path),
+                    "max_distance_km": self.parameterAsDouble(parameters, self.MAX_DISTANCE_KM, context),
+                    "wind_height": wind_height,
+                    "estimation": self.parameterAsBoolean(parameters, self.ESTIMATE_MISSING, context),
+                    "krs": (0.16, 0.19)[self.parameterAsEnum(parameters, self.KRS, context)]}
+        return series, settings
+
+    @staticmethod
+    def _nearest_station(prep, stations, max_km, geod):
+        """Assign the nearest station to a prepared feature, within max_km."""
+        here = QgsPointXY(prep["lon"], prep["lat"])
+        dist, best = min((geod.measureLine(here, QgsPointXY(s.longitude, s.latitude)) / 1000.0, i)
+                         for i, s in enumerate(stations))
+        station = stations[best]
+        if dist > max_km:
+            raise ValueError("no weather station within {:g} km (nearest: {} at {:.1f} km)".format(
+                max_km, station.station_id or "station", dist))
+        prep["cell"] = ("station", station.station_id)
+        prep["station_km"] = dist
+
     # --- run ----------------------------------------------------------------
 
     def processAlgorithm(self, parameters, context, feedback):
@@ -311,6 +444,14 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         nir_period = NIR_PERIODS[self.parameterAsEnum(parameters, self.NIR_PERIOD, context)]
         efficiency = self.parameterAsDouble(parameters, self.EFFICIENCY, context) or None
         cache = network.cache_dir() if self.parameterAsBoolean(parameters, self.USE_CACHE, context) else None
+        stations, climate_settings, estimation = None, {"source": "power"}, None
+        if self.parameterAsEnum(parameters, self.CLIMATE_SOURCE, context) == 1:
+            stations, climate_settings = self._load_stations(parameters, context, feedback)
+            if climate_settings["estimation"]:
+                estimation = eto_series.Estimation(krs=climate_settings["krs"])
+        geod = QgsDistanceArea()
+        geod.setSourceCrs(WGS84, context.transformContext())
+        geod.setEllipsoid("EPSG:7030")
 
         fields = QgsFields()
         for name, kind, length, prec in RESULT_FIELDS:
@@ -342,6 +483,8 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                 rec["prep"] = self._prepare_feature(
                     feat, crops, default_crop, crop_field, plant_field, default_plant, l_fields,
                     stages, mapping, region, to_wgs84, da, is_polygon)
+                if stations:
+                    self._nearest_station(rec["prep"], stations, climate_settings["max_distance_km"], geod)
             except Exception as exc:  # one bad field must not stop the run
                 rec["error"] = str(exc)    # a message only: stored exceptions would keep frames alive
             records.append(rec)
@@ -349,16 +492,22 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         # 2. one NASA POWER download per grid cell, covering all seasons in that cell
         today = date.today()
         groups = {}
-        for rec in records:
+        for rec in records if not stations else []:
             prep = rec["prep"]
             if prep is None or prep["start"] > today:
                 continue                     # errors and future seasons are reported in step 3
             g = groups.setdefault(prep["cell"], {"lat": prep["lat"], "lon": prep["lon"],
                                                  "start": prep["start"], "end": prep["end"]})
             g["start"], g["end"] = min(g["start"], prep["start"]), max(g["end"], prep["end"])
-        feedback.pushInfo("{} feature(s) in {} NASA POWER grid cell(s): {} download(s).".format(
-            len(records), len(groups), len(groups)))
         series, cell_errors = {}, {}
+        if stations:
+            series = {("station", s.station_id): s for s in stations}
+            used = {r["prep"]["cell"] for r in records if r["prep"] and "station_km" in r["prep"]}
+            feedback.pushInfo("{} feature(s) assigned to {} station(s); no download needed.".format(
+                len(records), len(used)))
+        else:
+            feedback.pushInfo("{} feature(s) in {} NASA POWER grid cell(s): {} download(s).".format(
+                len(records), len(groups), len(groups)))
         for n, (key, g) in enumerate(groups.items()):
             if feedback.isCanceled():
                 break
@@ -380,7 +529,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             if error is None:
                 try:
                     result = self._compute_feature(prep, series.get(prep["cell"]), pe_fraction,
-                                                   nir_period, efficiency, cache, today)
+                                                   nir_period, efficiency, cache, today, estimation)
                 except Exception as exc:  # one bad field must not stop the run
                     error = str(exc)
             if error is not None:
@@ -428,6 +577,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                                  "FAO-56 Table 11, region keyword '{}'{}".format(
                                      region[0], ", per-feature field '{}'".format(region[1])
                                      if region[1] else "")),
+                "climate": climate_settings,
             }
             outputs[self.OUTPUT_REPORT] = report.write_report(path, meta, settings, report_rows)
         if failures:
@@ -464,13 +614,14 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                 "start": start, "end": end, "lat": p.y(), "lon": p.x(), "area": area,
                 "cell": nasa_power.cell_key(p.y(), p.x())}
 
-    def _compute_feature(self, prep, series, pe_fraction, nir_period, efficiency, cache, today):
-        """Field balance with the climate series of the feature's grid cell."""
+    def _compute_feature(self, prep, series, pe_fraction, nir_period, efficiency, cache, today,
+                         estimation=None):
+        """Field balance with the climate series of the feature's grid cell or station."""
         crop, stage, stage_note = prep["crop"], prep["stage"], prep["stage_note"]
         r = pipeline.run_field(prep["lat"], prep["lon"], crop, stage, prep["plant"],
                                area_m2=prep["area"], pe_fraction=pe_fraction,
                                nir_period=nir_period, efficiency=efficiency, fetcher=self.fetcher,
-                               cache_dir=cache, today=today, series=series)
+                               cache_dir=cache, today=today, series=series, estimation=estimation)
         s = r["summary"]
         warnings = ([stage_note + "."] if stage_note else []) + s["warnings"]
         status = "ok" if not warnings else "warning: " + " ".join(warnings)
@@ -487,9 +638,19 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             "peak_dekad": s["peak_dekad"] or NULL, "peak_mm": _round(s["peak_dekad_NIR_mm"]),
             "miss_days": s["missing_days"], "nir_period": s["nir_period"],
             "pe_frac": pe_fraction, "elev_m": _round(s["elevation_m"]),
-            "clim_src": s["climate_source"], "status": status[:1000],
+            "clim_src": s["climate_source"], "station_km": _round(prep.get("station_km")),
+            "status": status[:1000],
             "_daily": r["daily"], "_dekad": r["dekad"], "_summary": s,
         }
+
+
+def _station_id(value):
+    """Station ID as text; 17056.0 from a numeric field becomes '17056'."""
+    if value in (None, NULL):
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return str(value).strip()
 
 
 def _report_row(label, result):

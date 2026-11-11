@@ -267,6 +267,110 @@ class TestFieldAlgorithm(unittest.TestCase):
         reopened = QgsVectorLayer(res["OUTPUT"], "again", "ogr")     # loads the default style
         self.assertEqual(reopened.renderer().type(), "graduatedSymbol")
 
+    # --- weather stations -------------------------------------------------
+
+    def station_csv(self, rows_for):
+        """CSV path with daily rows for 2024-10-01 .. 2025-12-31; rows_for(day) -> {station: row}."""
+        from datetime import timedelta
+        path = os.path.join(tempfile.mkdtemp(), "stations.csv")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("station,date,tmax,tmin,tdew,u2,rs,precip\n")
+            d = date(2024, 10, 1)
+            while d <= date(2025, 12, 31):
+                for sid, row in rows_for(d).items():
+                    fh.write("{},{},{}\n".format(sid, d.isoformat(), row))
+                d += timedelta(days=1)
+        return path
+
+    def station_layer(self, stations, id_type="string"):
+        layer = QgsVectorLayer("Point?crs=EPSG:4326&field=station:{}&field=elevation:double".format(id_type),
+                               "stations", "memory")
+        feats = []
+        for sid, lon, lat, elev in stations:
+            f = QgsFeature(layer.fields())
+            f.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(lon, lat)))
+            f.setAttributes([sid, elev])
+            feats.append(f)
+        layer.dataProvider().addFeatures(feats)
+        return layer
+
+    def no_download(self):
+        def refuse(url):
+            raise AssertionError("station mode must not download")
+        self.Alg.fetcher = staticmethod(refuse)
+        self.addCleanup(setattr, self.Alg, "fetcher", staticmethod(fake_fetcher))
+
+    def test_nearest_station(self):
+        self.no_download()
+        csv_path = self.station_csv(lambda d: {"A": "30,18,14,2,25,0", "B": "28,16,,,,0"})
+        stations = self.station_layer([("A", 27.50, 40.97, 4.0), ("B", 26.56, 41.68, 51.0)])
+        feats, res = self.run_alg(self.sample_layer(), CLIMATE_SOURCE=1, STATION_CSV=csv_path,
+                                  STATION_LAYER=stations, STATION_ID_FIELD="station",
+                                  STATION_ELEV_FIELD="elevation", MAX_DISTANCE_KM=50,
+                                  OUTPUT_REPORT=os.path.join(tempfile.mkdtemp(), "r.txt"))
+        for name, f in feats.items():
+            with self.subTest(field=name):
+                self.assertEqual(f["clim_src"], "Weather station A")
+                self.assertLess(f["station_km"], 10)
+                self.assertEqual(f["elev_m"], 4.0)
+                self.assertEqual(f["status"], "ok")             # A has all inputs: nothing estimated
+                self.assertEqual(f["miss_days"], 0)
+        with open(res["OUTPUT_REPORT"], encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("Weather station data (CSV)", text)
+        self.assertIn("stations.csv", text)
+        self.assertNotIn("NASA POWER daily point API", text)
+
+    def test_station_estimates_and_distance_limit(self):
+        self.no_download()
+        csv_path = self.station_csv(lambda d: {"B": "28,16,,,,0"})
+        stations = self.station_layer([("B", 27.55, 40.99, 10.0)])
+        feats, _ = self.run_alg(self.sample_layer(), CLIMATE_SOURCE=1, STATION_CSV=csv_path,
+                                STATION_LAYER=stations, MAX_DISTANCE_KM=50, KRS=1)
+        f = feats["Field A"]
+        self.assertTrue(f["status"].startswith("warning"))
+        for word in ("Eq. 48", "Eq. 50", "u2 = 2 m/s"):
+            self.assertIn(word, f["status"])
+        far = self.station_layer([("B", 26.56, 41.68, 10.0)])           # Edirne, ~95 km away
+        feats, _ = self.run_alg(self.sample_layer(), CLIMATE_SOURCE=1, STATION_CSV=csv_path,
+                                STATION_LAYER=far, MAX_DISTANCE_KM=50)
+        self.assertIn("no weather station within 50 km", feats["Field A"]["status"])
+
+    def test_station_input_errors(self):
+        csv_path = self.station_csv(lambda d: {"A": "30,18,14,2,25,0"})
+        no_elev = QgsVectorLayer("Point?crs=EPSG:4326&field=station:string", "s", "memory")
+        f = QgsFeature(no_elev.fields())
+        f.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(27.5, 40.97)))
+        f.setAttributes(["A"])
+        no_elev.dataProvider().addFeatures([f])
+        alg = self.Alg()
+        alg.initAlgorithm()
+        for params in ({"STATION_LAYER": no_elev, "STATION_CSV": csv_path},       # no elevation field
+                       {"STATION_CSV": csv_path}):                                 # no station layer
+            with self.subTest(params=sorted(params)):
+                res, ok = alg.run(dict({"INPUT": self.sample_layer(), "OUTPUT": "memory:",
+                                        "CLIMATE_SOURCE": 1}, **params),
+                                  QgsProcessingContext(), QgsProcessingFeedback())
+                self.assertFalse(ok)
+
+    def test_single_station_and_numeric_id(self):
+        self.no_download()
+        path = os.path.join(tempfile.mkdtemp(), "one.csv")
+        with open(path, "w", encoding="utf-8") as fh:            # MGM style, no station column
+            fh.write("Tarih;Maksimum Sıcaklık (°C);Minimum Sıcaklık (°C);Ortalama Nem (%);"
+                     "Rüzgar Hızı (m/s);Güneşlenme Süresi (saat);Yağış (mm)\n")
+            from datetime import timedelta
+            d = date(2024, 10, 1)
+            while d <= date(2025, 12, 31):
+                fh.write("{:%d.%m.%Y};30,5;18,2;60;3,0;11,5;0\n".format(d))
+                d += timedelta(days=1)
+        stations = self.station_layer([(17056, 27.50, 40.97, 4.0)], id_type="integer")
+        feats, _ = self.run_alg(self.sample_layer(), CLIMATE_SOURCE=1, STATION_CSV=path,
+                                STATION_LAYER=stations, WIND_HEIGHT=10)
+        f = feats["Field C"]
+        self.assertEqual((f["clim_src"], f["status"]), ("Weather station 17056", "ok"))
+        self.assertGreater(f["NIR_mm"], 0)
+
     def test_provider_registration(self):
         from fao56_cwr_mapper.qgis_processing.provider import FAO56Provider
         provider = FAO56Provider()

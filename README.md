@@ -19,7 +19,7 @@ fao56_cwr_mapper/        QGIS plugin package (build the zip with tools/build_plu
   core/report.py         Run report (text/HTML): method, data source, results, warnings
   pipeline.py            Point chain: NASA POWER -> ETo -> ETc -> net irrigation
   qgis_processing/       Processing provider and field algorithm (QGIS network stack)
-  climate_sources/       NASA POWER daily point client (with local cache)
+  climate_sources/       NASA POWER daily point client (with local cache), station CSV reader
   data/                  FAO-56 Tables 11/12 as CSV, Kc range variants, crop mapping
 tests/                   Unit tests against FAO-56 worked examples (no QGIS needed)
 sample_data/             Example field layer (Tekirdağ)
@@ -73,6 +73,35 @@ PYTHONPATH=/Applications/QGIS.app/Contents/Resources/qgis/python/plugins:. /Appl
 
 Cross-check: fed with Open-Meteo's own daily inputs (Tekirdağ, July 2025) the
 core reproduces Open-Meteo's FAO-56 ET0 monthly total within 0.1 %.
+
+## Weather station data
+
+Choose *Climate data source = Weather stations* and give:
+
+- **Station data (CSV)** – one row per station and day. Column names are
+  recognised in English or Turkish, ignoring case, spaces and units in brackets
+  (`Tmax (°C)`, `Maksimum Sıcaklık (°C)`):
+
+  | variable | columns (any of) | unit |
+  |---|---|---|
+  | station (several stations) | `station`, `istasyon`, `istasyon no` | |
+  | date | `date`, `tarih` (YYYY-MM-DD or DD.MM.YYYY) | |
+  | Tmax, Tmin | `tmax`, `tmin`, `maksimum sicaklik`, `minimum sicaklik` | °C |
+  | rainfall | `precip`, `rain`, `yagis` | mm |
+  | humidity | `tdew` / `rhmax` + `rhmin` / `rhmax` / `rh`, `nem` | °C, % |
+  | wind | `u2` (at 2 m) or `wind`, `ruzgar` (height as a parameter) | m/s |
+  | radiation | `rs`, `radyasyon` or `sunshine`, `guneslenme` (hours) | MJ m⁻² day⁻¹, h |
+
+  Delimiters `,` `;` or tab; with `;` a decimal comma is fine. Empty cells,
+  `NA`, `-`, `-999` mean missing. UTF-8 or Windows-1254 (Turkish) encoding.
+- **Station locations** – a point layer with the station ID (matching the CSV)
+  and the station elevation in metres.
+
+Each field uses its nearest station within the maximum distance (`station_km`
+in the result). Missing humidity, radiation or wind can be estimated with the
+FAO-56 procedures for missing data – ea from Tmin (Eq. 48), Rs from the
+temperature range (Hargreaves, Eq. 50, kRs 0.16 interior / 0.19 coastal) and
+u2 = 2 m/s; every estimate is listed in `status` and in the run report.
 
 ## Building the plugin zip
 
