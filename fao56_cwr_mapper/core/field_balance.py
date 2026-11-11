@@ -1,7 +1,9 @@
 """Crop water requirement and net irrigation requirement for one field.
 
 Chain: daily ETo (eto_series) x daily Kc (crop + stage lengths) = ETc;
-effective rainfall Pe from daily rainfall; net irrigation requirement
+effective rainfall Pe from daily rainfall (fixed fraction) or per dekad
+(USDA SCS methods, see water_balance; the dekad Pe is shared among its days
+in proportion to their rainfall); net irrigation requirement
 NIR = max(0, ETc - Pe), evaluated per day or per dekad.
 
 - "dekad" (default; 10-day periods, as in CROPWAT): ETc and Pe are summed
@@ -43,19 +45,22 @@ def _sum(values):
 
 def field_water_balance(eto_rows, kc_crop, stage, planting_date, area_m2=None,
                         pe_fraction=0.80, nir_period=NIR_DEKAD, efficiency=None,
-                        today=None):
+                        today=None, effective_rainfall=None):
     """Daily, dekad, monthly and seasonal crop water and irrigation figures.
 
     eto_rows: output of eto_series.daily_eto_series (dicts with day, ETo, precip).
     kc_crop: crop_table.CropKc; stage: stage_table.StageLengths.
     area_m2: field area (ellipsoidal) for volumes; None gives depths only.
     efficiency: irrigation application efficiency (0-1) for gross requirement.
+    effective_rainfall: water_balance.EffectiveRainfall; None means a fixed
+    fraction pe_fraction.
     """
     if nir_period not in (NIR_DAILY, NIR_DEKAD):
         raise ValueError("nir_period must be 'daily' or 'dekad'")
     if efficiency is not None and not 0.0 < efficiency <= 1.0:
         raise ValueError("efficiency must be between 0 and 1")
     today = today or date.today()
+    pe_spec = effective_rainfall or water_balance.EffectiveRainfall(fraction=pe_fraction)
 
     climate = {r["day"]: r for r in eto_rows}
     series = water_balance.kc_series(planting_date, kc_crop.kc_ini, kc_crop.kc_mid,
@@ -67,16 +72,19 @@ def field_water_balance(eto_rows, kc_crop, stage, planting_date, area_m2=None,
         p = r["precip"] if r else None
         complete = eto is not None and p is not None
         etc = kc * eto if eto is not None else None
-        pe = water_balance.effective_rainfall_fixed(p, pe_fraction) if p is not None else None
+        pe = (water_balance.effective_rainfall_fixed(p, pe_spec.fraction)
+              if p is not None and not pe_spec.per_period else None)
         daily.append({
             "day": day, "dekad": dekad_of(day), "stage": stage_name, "Kc": kc,
             "ETo": eto, "ETc": etc, "P": p, "Pe": pe,
-            "NIR": water_balance.net_irrigation(etc, pe) if complete else None,
+            "NIR": water_balance.net_irrigation(etc, pe) if complete and pe is not None else None,
             "missing": not complete, "no_data": r is None,
             "estimated": list(r.get("estimated", [])) if r else [],
             "reweighted": bool(r.get("reweighted")) if r else False,
         })
 
+    if pe_spec.per_period:
+        _period_effective_rainfall(daily, pe_spec)
     periods = {"dekad": _aggregate(daily, "dekad"),
                "month": _aggregate(daily, lambda d: month_of(d["day"]))}
     if nir_period == NIR_DEKAD:
@@ -96,7 +104,9 @@ def field_water_balance(eto_rows, kc_crop, stage, planting_date, area_m2=None,
         "season_start": series[0][0], "season_end": series[-1][0], "season_days": len(series),
         "ETo_mm": _sum(d["ETo"] for d in daily), "ETc_mm": _sum(d["ETc"] for d in daily),
         "P_mm": _sum(d["P"] for d in daily), "Pe_mm": _sum(d["Pe"] for d in daily),
-        "NIR_mm": nir_total, "nir_period": nir_period, "pe_fraction": pe_fraction,
+        "NIR_mm": nir_total, "nir_period": nir_period,
+        "pe_fraction": None if pe_spec.per_period else pe_spec.fraction,
+        "pe_method": pe_spec.method, "pe_description": pe_spec.describe(),
         "peak_dekad": peak["period"] if peak and peak["NIR"] else None,
         "peak_dekad_NIR_mm": peak["NIR"] if peak else None,
         "missing_days": sum(d["missing"] for d in daily),
@@ -114,6 +124,21 @@ def field_water_balance(eto_rows, kc_crop, stage, planting_date, area_m2=None,
     summary["warnings"] = _warnings(daily, summary, today)
     return {"daily": daily, "dekad": periods["dekad"], "month": periods["month"],
             "summary": summary}
+
+
+def _period_effective_rainfall(daily, pe_spec):
+    """Pe per dekad from the days with complete data, shared in proportion to rainfall."""
+    groups = {}
+    for d in daily:
+        if not d["missing"]:
+            groups.setdefault(d["dekad"], []).append(d)
+    for days in groups.values():
+        p = sum(d["P"] for d in days)
+        pe = pe_spec.period(p, sum(d["ETc"] for d in days), len(days),
+                            water_balance.days_in_month(days[0]["day"]))
+        for d in days:
+            d["Pe"] = pe * d["P"] / p if p > 0 else 0.0
+            d["NIR"] = water_balance.net_irrigation(d["ETc"], d["Pe"])
 
 
 def _aggregate(daily, key):

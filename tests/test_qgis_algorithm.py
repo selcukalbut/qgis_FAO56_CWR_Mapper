@@ -483,6 +483,31 @@ class TestFieldAlgorithm(unittest.TestCase):
         self.assertEqual(feats["tomato_default"]["miss_days"], 5)
         self.assertTrue(feats["tomato_default"]["status"].startswith("warning"))
 
+    def test_usda_scs_effective_rainfall(self):
+        WEATHER["PRECTOTCORR"] = 3.0
+        self.addCleanup(WEATHER.__setitem__, "PRECTOTCORR", 0.0)
+        tmp = tempfile.mkdtemp()
+        out = {}
+        for method in (0, 1, 2):
+            path = os.path.join(tmp, "report{}.txt".format(method))
+            feats, _ = self.run_alg(self.polygon_layer(), PLANTING_DATE=QDate(2025, 5, 1), PE_METHOD=method,
+                                    SOIL_STORAGE_MM=60.0, OUTPUT_REPORT=path)
+            with open(path, encoding="utf-8") as fh:
+                out[method] = (feats["tomato_default"], fh.read())
+        fixed, cropwat, neh = (out[m][0] for m in (0, 1, 2))
+        self.assertAlmostEqual(fixed["Pe_mm"], 0.8 * fixed["P_mm"], delta=0.2)
+        self.assertEqual(fixed["pe_method"], "fixed fraction 0.80")
+        # ~30 mm per dekad: CROPWAT form keeps about 85 % (factor 3: 30 (125 - 18) / 125 = 25.7)
+        self.assertTrue(0.82 < cropwat["Pe_mm"] / cropwat["P_mm"] < 0.88, cropwat["Pe_mm"])
+        self.assertEqual(cropwat["pe_method"], "USDA SCS (CROPWAT)")
+        self.assertEqual(cropwat["pe_frac"], NULL)
+        self.assertEqual(neh["pe_method"], "USDA SCS (NEH 623, D = 60 mm)")
+        self.assertTrue(0 < neh["Pe_mm"] <= neh["P_mm"])
+        self.assertIn("Smith, M. (1992)", out[1][1])
+        self.assertIn("National Engineering Handbook", out[2][1])
+        self.assertIn("D = 60 mm", out[2][1])
+        self.assertNotIn("USDA", out[0][1])
+
     def test_provider_registration(self):
         from fao56_cwr_mapper.qgis_processing.provider import FAO56Provider
         provider = FAO56Provider()

@@ -11,7 +11,7 @@ irrigation requirement (mm, m³, m³/da, m³/ha) for polygon or point layers.
 ```
 fao56_cwr_mapper/        QGIS plugin package (build the zip with tools/build_plugin.py)
   core/fao56.py          FAO-56 ETo, one function per equation
-  core/water_balance.py  Kc curve (Eq. 66), effective rainfall, net irrigation, units
+  core/water_balance.py  Kc curve (Eq. 66), effective rainfall (fixed, USDA SCS), net irrigation, units
   core/eto_series.py     Daily ETo series from climate records (missing days flagged)
   core/crop_table.py     Kc table from FAO-56 Table 12 (book-checked), user CSV, overrides
   core/stage_table.py    Stage lengths from FAO-56 Table 11, Table 11/12 crop mapping
@@ -74,6 +74,27 @@ PYTHONPATH=/Applications/QGIS.app/Contents/Resources/qgis/python/plugins:. /Appl
 Cross-check: fed with Open-Meteo's own daily inputs (Tekirdağ, 1 May – 30 Sep
 2025) the core reproduces Open-Meteo's FAO-56 ET0 season total within 0.14 %
 (ERA5-Seamless: 836.4 vs 837.6 mm; Best match 0.03 %, ERA5 1.2 %).
+
+## Effective rainfall
+
+*Effective rainfall method*:
+
+- **Fixed fraction** (default, 0.8): Pe = fraction × P, per day.
+- **USDA SCS (CROPWAT form)** (Smith 1992, FAO Irrigation and Drainage Paper 46):
+  Pe = P (125 − 0.2 P) / 125 for P ≤ 250 mm, Pe = 125 + 0.1 P above (monthly P).
+- **USDA SCS (NEH Part 623)** (USDA NRCS 1993, Eq. 2-84 and 2-85, from USDA 1970):
+  Pe = SF (0.70917 P^0.82416 − 0.11556) 10^(0.02426 ETc) in inches, with the soil
+  water storage factor SF = 0.531747 + 0.295164 D − 0.057697 D² + 0.003804 D³;
+  D is the usable soil water storage (40–60 % of the available water in the root
+  zone; default 75 mm ≈ 3 in, the basis of NEH Table 2-43). Pe is limited to the
+  lesser of P and ETc. Checked against the NEH worked example (P 4.7 in, ETc
+  7.6 in → 3.70 in) and Table 2-43.
+
+Both SCS forms are monthly formulas. Each dekad's rainfall (and ETc) is scaled to
+its calendar month (× days in the month / days in the dekad), the formula applied
+and the result scaled back – factor 3 for a 10-day dekad of a 30-day month, as in
+CROPWAT's decade form – and the dekad Pe is shared among its days in proportion to
+their rainfall. The method is written to `pe_method`.
 
 ## Weather station data
 

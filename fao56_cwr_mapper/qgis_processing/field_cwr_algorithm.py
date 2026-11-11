@@ -36,7 +36,7 @@ from qgis.PyQt.QtCore import QDate, QDateTime
 from .. import pipeline
 from ..climate_sources import nasa_power, open_meteo, station_csv
 from ..climate_sources.nasa_power import ATTRIBUTION
-from ..core import crop_table, eto_series, field_balance, report, stage_table
+from ..core import crop_table, eto_series, field_balance, report, stage_table, water_balance
 from . import compat, network
 from .styling import NirStylePostProcessor
 
@@ -65,6 +65,7 @@ RESULT_FIELDS = [
     ("miss_days", "int", 6, 0),
     ("nir_period", "string", 8, 0),
     ("pe_frac", "double", 5, 2),
+    ("pe_method", "string", 40, 0),
     ("elev_m", "double", 8, 1),
     ("clim_src", "string", 254, 0),
     ("station_km", "double", 8, 1),
@@ -117,6 +118,8 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
     L_FIELDS = ("L_INI_FIELD", "L_DEV_FIELD", "L_MID_FIELD", "L_LATE_FIELD")
     USER_KC_CSV = "USER_KC_CSV"
     PE_FRACTION = "PE_FRACTION"
+    PE_METHOD = "PE_METHOD"
+    SOIL_STORAGE_MM = "SOIL_STORAGE_MM"
     NIR_PERIOD = "NIR_PERIOD"
     EFFICIENCY = "EFFICIENCY"
     USE_CACHE = "USE_CACHE"
@@ -163,7 +166,9 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             "Computes FAO-56 crop water requirement for each field (polygon) or point: "
             "daily Penman-Monteith ETo from NASA POWER, Open-Meteo (ERA5) or weather station "
             "data, single crop coefficient ETc = Kc x ETo, "
-            "effective rainfall Pe as a fixed fraction of rainfall and net irrigation "
+            "effective rainfall Pe (fixed fraction of rainfall, or the USDA SCS method in its CROPWAT "
+            "form or as in USDA NRCS NEH Part 623 with crop ET and soil water storage; the monthly "
+            "SCS formulas are applied per dekad scaled to a month) and net irrigation "
             "requirement NIR = max(0, ETc - Pe) per dekad (CROPWAT-like, default) or per day.\n\n"
             "Crop: a text field with the crop name exactly as listed in the Crop parameter "
             "(FAO-56 Table 12, e.g. 'Tomato', 'Sunflower - irrigated'), or the Crop parameter "
@@ -279,9 +284,17 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             options=["Interior (kRs = 0.16)", "Coastal (kRs = 0.19)"], defaultValue=0)
         p.setFlags(p.flags() | compat.FLAG_ADVANCED)
         self.addParameter(p)
+        self.addParameter(QgsProcessingParameterEnum(
+            self.PE_METHOD, "Effective rainfall method",
+            options=["Fixed fraction (Pe = fraction x P)", "USDA SCS (CROPWAT form)",
+                     "USDA SCS (NEH Part 623, with crop ET and soil water storage)"], defaultValue=0))
         self.addParameter(QgsProcessingParameterNumber(
-            self.PE_FRACTION, "Effective rainfall fraction (Pe = fraction x P)",
+            self.PE_FRACTION, "Effective rainfall fraction (fixed fraction method)",
             type=compat.NUMBER_DOUBLE, minValue=0.0, maxValue=1.0, defaultValue=0.8))
+        self.addParameter(QgsProcessingParameterNumber(
+            self.SOIL_STORAGE_MM, "Usable soil water storage D for USDA SCS NEH 623 [mm] (40-60 % of the "
+            "available water in the root zone)", type=compat.NUMBER_DOUBLE, minValue=1.0, maxValue=250.0,
+            defaultValue=75.0))
         self.addParameter(QgsProcessingParameterEnum(
             self.NIR_PERIOD, "Net irrigation evaluated per",
             options=["Dekad (CROPWAT-like)", "Day"], defaultValue=0))
@@ -522,6 +535,10 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         if any(l_fields) and not all(l_fields):
             raise QgsProcessingException("Give all four stage length fields or none.")
         pe_fraction = self.parameterAsDouble(parameters, self.PE_FRACTION, context)
+        self._pe = water_balance.EffectiveRainfall(
+            water_balance.PE_METHODS[self.parameterAsEnum(parameters, self.PE_METHOD, context)],
+            fraction=pe_fraction,
+            storage_mm=self.parameterAsDouble(parameters, self.SOIL_STORAGE_MM, context))
         nir_period = NIR_PERIODS[self.parameterAsEnum(parameters, self.NIR_PERIOD, context)]
         efficiency = self.parameterAsDouble(parameters, self.EFFICIENCY, context) or None
         cache = network.cache_dir() if self.parameterAsBoolean(parameters, self.USE_CACHE, context) else None
@@ -685,6 +702,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
                     "ellipsoid": da.ellipsoid(), "qgis_version": Qgis.version()}
             settings = {
                 "pe_fraction": pe_fraction, "nir_period": nir_period, "efficiency": efficiency,
+                "pe_method": self._pe.method, "pe_storage_mm": self._pe.storage_mm,
                 "user_kc_csv": user_csv,
                 "crop_source": ("field '{}' (empty values: {})".format(crop_field, default_crop.name)
                                 if crop_field else "{} for all features".format(default_crop.name)),
@@ -737,7 +755,8 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         r = pipeline.run_field(prep["lat"], prep["lon"], prep["crop"], prep["stage"], prep["plant"],
                                area_m2=prep["area"], pe_fraction=pe_fraction,
                                nir_period=nir_period, efficiency=efficiency, fetcher=self.fetcher,
-                               cache_dir=cache, today=today, series=series, estimation=estimation)
+                               cache_dir=cache, today=today, series=series, estimation=estimation,
+                               effective_rainfall=self._pe)
         result = self._result(prep, r, pe_fraction)
         if prep.get("weights") is not None:          # Thiessen mode, field inside one cell
             result["stn_weight"] = "{}:1.000".format(prep["cell"][1] or "station")
@@ -749,7 +768,8 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         r = pipeline.run_field_weighted(prep["lat"], prep["lon"], prep["crop"], prep["stage"],
                                         prep["plant"], parts, area_m2=prep["area"],
                                         pe_fraction=pe_fraction, nir_period=nir_period,
-                                        efficiency=efficiency, today=today, estimation=estimation)
+                                        efficiency=efficiency, today=today, estimation=estimation,
+                                        effective_rainfall=self._pe)
         result = self._result(prep, r, pe_fraction)
         result["stn_weight"] = " ".join("{}:{:.3f}".format(sid or "station", w)
                                         for sid, w in r["summary"]["station_weights"])
@@ -773,7 +793,8 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             "GIR_mm": _round(s.get("GIR_mm")),
             "peak_dekad": s["peak_dekad"] or NULL, "peak_mm": _round(s["peak_dekad_NIR_mm"]),
             "miss_days": s["missing_days"], "nir_period": s["nir_period"],
-            "pe_frac": pe_fraction, "elev_m": _round(s["elevation_m"]),
+            "pe_frac": _round(s["pe_fraction"], 2), "pe_method": s["pe_description"][:40],
+            "elev_m": _round(s["elevation_m"]),
             "clim_src": s["climate_source"][:254], "station_km": _round(prep.get("station_km")),
             "status": status[:1000],
             "_daily": r["daily"], "_dekad": r["dekad"], "_summary": s,

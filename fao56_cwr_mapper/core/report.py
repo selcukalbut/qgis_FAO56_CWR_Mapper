@@ -73,14 +73,22 @@ def _climate(settings):
 
 def references(settings):
     source = _climate(settings)["source"]
+    refs = [FAO56_REFERENCE]
+    refs += {"usda_cropwat": [CROPWAT_REFERENCE], "usda_neh": [USDA_NEH_REFERENCE]}.get(
+        _pe_method(settings), [])
     if source == "power":
-        return [FAO56_REFERENCE, POWER_REFERENCE]
-    if source == "open_meteo":
-        return [FAO56_REFERENCE] + list(OPEN_METEO_REFERENCES)
-    return [FAO56_REFERENCE]
+        refs.append(POWER_REFERENCE)
+    elif source == "open_meteo":
+        refs += list(OPEN_METEO_REFERENCES)
+    return refs
 
 
 def limitations(settings):
+    out = _climate_limitations(settings)
+    return out + ([SCS_LIMITATION] if _pe_method(settings) != "fixed" else [])
+
+
+def _climate_limitations(settings):
     c = _climate(settings)
     if c["source"] == "power":
         return [POWER_LIMITATION] + COMMON_LIMITATIONS
@@ -143,6 +151,52 @@ def _climate_method_lines(settings):
     return lines
 
 
+USDA_NEH_REFERENCE = (
+    "USDA NRCS (1993). National Engineering Handbook, Part 623 Irrigation, Chapter 2: Irrigation "
+    "Water Requirements (210-vi-NEH), section 623.0207 Effective precipitation. Washington, DC.")
+CROPWAT_REFERENCE = (
+    "Smith, M. (1992). CROPWAT - A computer program for irrigation planning and management. "
+    "FAO Irrigation and Drainage Paper 46. Rome: FAO.")
+SCS_LIMITATION = (
+    "The USDA SCS effective rainfall formulas were derived for monthly totals (50 years of records "
+    "at 22 US locations); applied per dekad scaled to a month they are an approximation. They do not "
+    "consider infiltration rate, rainfall intensity or slope and overestimate Pe on poorly drained "
+    "soils (NEH 623).")
+
+
+def _pe_method(settings):
+    return settings.get("pe_method", "fixed")
+
+
+def _pe_input(settings):
+    m = _pe_method(settings)
+    if m == "usda_cropwat":
+        return "USDA SCS, CROPWAT form"
+    if m == "usda_neh":
+        return "USDA SCS, NEH Part 623 (usable soil water storage D = {:g} mm)".format(
+            settings.get("pe_storage_mm", 75.0))
+    return "fixed fraction {:.2f}".format(settings["pe_fraction"])
+
+
+def _pe_line(settings):
+    m = _pe_method(settings)
+    scaled = (" The formula is monthly: each dekad's totals are scaled to a month (x days in "
+              "the month / days in the dekad), the formula applied and the result scaled back (factor 3 "
+              "for a 10-day dekad of a 30-day month); the dekad Pe is shared among its days in "
+              "proportion to rainfall. Days with missing data are left out.")
+    if m == "usda_cropwat":
+        return ("Effective rainfall: USDA Soil Conservation Service method as in CROPWAT (Smith 1992): "
+                "Pe = P (125 - 0.2 P) / 125 for P <= 250 mm, Pe = 125 + 0.1 P for P > 250 mm "
+                "(monthly totals)." + scaled)
+    if m == "usda_neh":
+        return ("Effective rainfall: USDA SCS method, NEH Part 623 Eq. 2-84: Pe = SF (0.70917 P^0.82416 "
+                "- 0.11556) 10^(0.02426 ETc) in inches, with the soil water storage factor of Eq. 2-85, "
+                "SF = 0.531747 + 0.295164 D - 0.057697 D^2 + 0.003804 D^3 (D = {:g} mm = {:.2f} in); Pe "
+                "is limited to the lesser of P and ETc.".format(
+                    settings.get("pe_storage_mm", 75.0), settings.get("pe_storage_mm", 75.0) / 25.4) + scaled)
+    return "Effective rainfall Pe = {:.2f} x P (fixed fraction).".format(settings["pe_fraction"])
+
+
 def method_lines(settings):
     nir = ("per dekad (10-day periods, as in CROPWAT): NIR = max(0, sum ETc - sum Pe) for each dekad"
            if settings["nir_period"] == "dekad" else
@@ -154,7 +208,7 @@ def method_lines(settings):
         "footnote are separate crop variants; other ranges use their midpoint.",
         "Stage lengths: from stage length fields when given, otherwise an FAO-56 Table 11 example "
         "chosen by region keyword, then by planting month.",
-        "Effective rainfall Pe = {:.2f} x P (fixed fraction).".format(settings["pe_fraction"]),
+        _pe_line(settings),
         "Net irrigation requirement " + nir + ". Periods with missing climate data get no value; "
         "missing days are never filled{}.".format(
             "" if _climate(settings)["source"] in ("power", "open_meteo") else " (only individual inputs are estimated)"
@@ -220,7 +274,7 @@ def _sections(meta, settings, results):
         ("Crop", settings.get("crop_source", "-")),
         ("Planting date", settings.get("planting_source", "-")),
         ("Stage lengths", settings.get("stage_source", "-")),
-        ("Effective rainfall fraction", "{:.2f}".format(settings["pe_fraction"])),
+        ("Effective rainfall", _pe_input(settings)),
         ("Net irrigation evaluated per", settings["nir_period"]),
         ("Application efficiency", "{:.2f}".format(settings["efficiency"]) if settings.get("efficiency") else "not used"),
         ("User Kc table", settings.get("user_kc_csv") or "none"),

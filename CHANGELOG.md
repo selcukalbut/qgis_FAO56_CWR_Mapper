@@ -13,8 +13,12 @@
 - Open-Meteo Historical Weather API as a third climate source (ERA5-Seamless,
   ERA5 or Best match; one download per 0.01° point, local cache). The report
   states the non-commercial terms, CC BY 4.0 attribution and citations.
+- Effective rainfall by the USDA SCS method: the CROPWAT form (Smith 1992) or
+  NEH Part 623 Eq. 2-84/2-85 with crop ET and usable soil water storage
+  (default 75 mm), applied per dekad scaled to a month; the fixed fraction
+  stays the default. New result field `pe_method`.
 - Run report method, data source, references and limitations follow the
-  chosen climate source.
+  chosen climate source and effective rainfall method.
 
 ## 0.1.1 – 2026-11-03 (experimental)
 

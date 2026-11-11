@@ -13,7 +13,7 @@ from .core import eto_series, field_balance, weighting
 def run_field(latitude, longitude, kc_crop, stage, planting_date, area_m2=None,
               elevation=None, pe_fraction=0.80, nir_period=field_balance.NIR_DEKAD,
               efficiency=None, fetcher=None, cache_dir=None, today=None, series=None,
-              estimation=None):
+              estimation=None, effective_rainfall=None):
     """Full chain for one location.
 
     elevation: site elevation [m]; defaults to the POWER grid cell elevation,
@@ -37,7 +37,8 @@ def run_field(latitude, longitude, kc_crop, stage, planting_date, area_m2=None,
     eto_rows = eto_series.daily_eto_series(series.days, latitude, z, estimation=estimation)
     result = field_balance.field_water_balance(
         eto_rows, kc_crop, stage, planting_date, area_m2=area_m2,
-        pe_fraction=pe_fraction, nir_period=nir_period, efficiency=efficiency, today=today)
+        pe_fraction=pe_fraction, nir_period=nir_period, efficiency=efficiency, today=today,
+        effective_rainfall=effective_rainfall)
     result["summary"].update({
         "latitude": latitude, "longitude": longitude, "elevation_m": z,
         "climate_source": getattr(series, "description", None)
@@ -58,7 +59,7 @@ def run_field(latitude, longitude, kc_crop, stage, planting_date, area_m2=None,
 
 def run_field_weighted(latitude, longitude, kc_crop, stage, planting_date, weighted_series,
                        area_m2=None, pe_fraction=0.80, nir_period=field_balance.NIR_DEKAD,
-                       efficiency=None, today=None, estimation=None):
+                       efficiency=None, today=None, estimation=None, effective_rainfall=None):
     """Field chain with Thiessen-weighted stations.
 
     weighted_series: [(weight, StationSeries)]; weights are normalised to sum to 1.
@@ -79,7 +80,8 @@ def run_field_weighted(latitude, longitude, kc_crop, stage, planting_date, weigh
     combined = weighting.combine_eto_rows([(w, rows) for w, _, rows in parts])
     result = field_balance.field_water_balance(
         combined, kc_crop, stage, planting_date, area_m2=area_m2,
-        pe_fraction=pe_fraction, nir_period=nir_period, efficiency=efficiency, today=today)
+        pe_fraction=pe_fraction, nir_period=nir_period, efficiency=efficiency, today=today,
+        effective_rainfall=effective_rainfall)
     label = ", ".join("{} {:.0f} %".format(s.station_id or "station", 100 * w)
                       for w, s, _ in sorted(parts, key=lambda p: -p[0]))
     result["summary"].update({
