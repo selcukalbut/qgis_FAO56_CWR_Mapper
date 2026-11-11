@@ -11,15 +11,24 @@ from datetime import datetime
 
 from ..climate_sources.nasa_power import ATTRIBUTION
 
-REFERENCES = [
+FAO56_REFERENCE = (
     "Allen, R.G., Pereira, L.S., Raes, D., Smith, M. (1998). Crop evapotranspiration - "
-    "Guidelines for computing crop water requirements. FAO Irrigation and Drainage Paper 56. Rome: FAO.",
-    "NASA POWER Project, Daily API (https://power.larc.nasa.gov). " + ATTRIBUTION,
-]
+    "Guidelines for computing crop water requirements. FAO Irrigation and Drainage Paper 56. Rome: FAO.")
+POWER_REFERENCE = "NASA POWER Project, Daily API (https://power.larc.nasa.gov). " + ATTRIBUTION
 
-LIMITATIONS = [
-    "Climate data come from NASA POWER, a global grid of roughly 0.5 degrees. Near coasts and in "
-    "complex terrain it can differ markedly from local conditions; compare with station data.",
+POWER_LIMITATION = (
+    "Climate data come from NASA POWER, a global grid (meteorology 0.5 x 0.625 degrees, solar "
+    "radiation 1 x 1 degree). Near coasts and in complex terrain it can differ markedly from local "
+    "conditions; compare with station data.")
+STATION_LIMITATIONS = (
+    "Station data are used as given; quality control is limited to range checks (Tmax < Tmin "
+    "swapped, relative humidity outside 0-100 % and negative values ignored).",
+    "Each field uses its nearest station; climate between stations is not interpolated.")
+ESTIMATION_LIMITATION = (
+    "Estimated inputs (FAO-56 missing-data procedures) are less accurate than measurements; "
+    "ea from Tmin (Eq. 48) can overestimate humidity in arid climates.")
+
+COMMON_LIMITATIONS = [
     "No soil water storage is modelled: rainfall can only offset demand within the same period "
     "(dekad or day). Requirements of crops grown in the rainy season (e.g. winter cereals) are "
     "therefore overestimated. A soil water balance is planned for a later version.",
@@ -40,16 +49,57 @@ def plugin_version():
         return "unknown"
 
 
+def _climate(settings):
+    return settings.get("climate") or {"source": "power"}
+
+
+def references(settings):
+    return [FAO56_REFERENCE] + ([POWER_REFERENCE] if _climate(settings)["source"] == "power" else [])
+
+
+def limitations(settings):
+    c = _climate(settings)
+    if c["source"] == "power":
+        return [POWER_LIMITATION] + COMMON_LIMITATIONS
+    extra = [ESTIMATION_LIMITATION] if c.get("estimation") else []
+    return list(STATION_LIMITATIONS) + extra + COMMON_LIMITATIONS
+
+
+def _climate_method_lines(settings):
+    c = _climate(settings)
+    if c["source"] == "power":
+        return [
+            "Reference evapotranspiration ETo: FAO-56 Penman-Monteith, daily step (Eq. 6), soil heat "
+            "flux G = 0. Actual vapour pressure from dewpoint (Eq. 14), from mean relative humidity "
+            "(Eq. 19) when dewpoint is missing. Net radiation from measured solar radiation with Rso "
+            "from Eq. 37 and albedo 0.23. Wind speed at 2 m as provided by NASA POWER (WS2M), at least "
+            "0.5 m/s.",
+            "Elevation for atmospheric pressure and Rso: elevation of the NASA POWER grid cell.",
+        ]
+    lines = [
+        "Reference evapotranspiration ETo: FAO-56 Penman-Monteith, daily step (Eq. 6), soil heat flux "
+        "G = 0, from weather station data. Actual vapour pressure from dewpoint (Eq. 14), RHmax and "
+        "RHmin (Eq. 17), RHmax (Eq. 18) or mean RH (Eq. 19), in this order. Solar radiation as "
+        "measured or from sunshine duration (Angstrom, Eq. 35, as = 0.25, bs = 0.50); Rso from Eq. 37, "
+        "albedo 0.23. Wind speed converted from {} m to 2 m (Eq. 47), at least 0.5 m/s.".format(
+            "{:g}".format(float(c.get("wind_height", 2.0)))),
+        "Each field uses the nearest station within {} km; elevation for atmospheric pressure and Rso "
+        "is the station elevation.".format("{:g}".format(float(c.get("max_distance_km", 0))))]
+    if c.get("estimation"):
+        lines.append(
+            "Missing inputs are estimated with the FAO-56 procedures for missing climatic data: ea from "
+            "Tmin (Eq. 48), Rs = kRs sqrt(Tmax - Tmin) Ra (Hargreaves, Eq. 50, kRs = {:.2f}) and "
+            "u2 = 2 m/s. Estimated variables and days are listed under warnings.".format(c.get("krs", 0.16)))
+    else:
+        lines.append("Days with missing humidity, radiation or wind data are not computed.")
+    return lines
+
+
 def method_lines(settings):
     nir = ("per dekad (10-day periods, as in CROPWAT): NIR = max(0, sum ETc - sum Pe) for each dekad"
            if settings["nir_period"] == "dekad" else
            "per day: NIR = max(0, ETc - Pe) for each day")
-    lines = [
-        "Reference evapotranspiration ETo: FAO-56 Penman-Monteith, daily step (Eq. 6), soil heat flux "
-        "G = 0. Actual vapour pressure from dewpoint (Eq. 14), from mean relative humidity (Eq. 19) "
-        "when dewpoint is missing. Net radiation from measured solar radiation with Rso from Eq. 37 "
-        "and albedo 0.23. Wind speed at 2 m as provided by NASA POWER (WS2M).",
-        "Elevation for atmospheric pressure and Rso: elevation of the NASA POWER grid cell.",
+    lines = _climate_method_lines(settings) + [
         "Crop evapotranspiration ETc = Kc x ETo (single crop coefficient). Daily Kc from Kc ini, "
         "Kc mid, Kc end with linear change in the development and late season stages (Eq. 66).",
         "Kc values: FAO-56 Table 12, checked against the printed publication. Ranges explained by a "
@@ -58,7 +108,9 @@ def method_lines(settings):
         "chosen by region keyword, then by planting month.",
         "Effective rainfall Pe = {:.2f} x P (fixed fraction).".format(settings["pe_fraction"]),
         "Net irrigation requirement " + nir + ". Periods with missing climate data get no value; "
-        "missing days are never filled.",
+        "missing days are never filled{}.".format(
+            "" if _climate(settings)["source"] == "power" else " (only individual inputs are estimated)"
+            if _climate(settings).get("estimation") else ""),
         "Volumes from ellipsoidal field area: 1 mm = 1 m3/da = 10 m3/ha.",
     ]
     if settings.get("efficiency"):
@@ -127,6 +179,20 @@ def _sections(meta, settings, results):
     ]
     products = sorted({p for r in results for p in r.get("climate_sources") or []})
     versions = sorted({r["api_version"] for r in results if r.get("api_version")})
+    c = _climate(settings)
+    if c["source"] != "power":
+        data = [
+            ("Source", "Weather station data (CSV)"),
+            ("File", c.get("file", "-")),
+            ("Stations used", ", ".join(p.replace("station ", "") for p in products) or "-"),
+            ("Assignment", "nearest station within {} km".format("{:g}".format(float(c.get("max_distance_km", 0))))),
+            ("Wind measurement height", "{} m".format("{:g}".format(float(c.get("wind_height", 2.0))))),
+            ("Missing inputs", "estimated (FAO-56 Eq. 48, Eq. 50 with kRs = {:.2f}, u2 = 2 m/s)".format(
+                c.get("krs", 0.16)) if c.get("estimation") else "not estimated"),
+            ("Seasons covered", "{} to {}".format(min(starts), max(ends)) if starts else "-"),
+            ("Run date", meta.get("run_time", "-")),
+        ]
+        return inputs, data, _summary(t), _warning_rows(results)
     data = [
         ("Source", "NASA POWER daily point API, community AG"),
         ("API version", ", ".join(versions) or "-"),
@@ -140,13 +206,19 @@ def _sections(meta, settings, results):
                                 "replaces them later, so repeating the run can give slightly "
                                 "different values.".format(", ".join(p for p in products
                                                                      if p in NEAR_REAL_TIME))))
-    summary = [
+    return inputs, data, _summary(t), _warning_rows(results)
+
+
+def _summary(t):
+    return [
         ("Total area", "{} ha".format(_fmt(t["area_ha"], 2)) if t["area_ha"] else "-"),
         ("Total net irrigation volume", "{} m3".format(_fmt(t["volume_m3"], 0)) if t["volume_m3"] else "-"),
         ("Area-weighted net irrigation", "{} mm".format(_fmt(t["mean_nir_mm"])) if t["mean_nir_mm"] else "-"),
     ]
-    warnings = [(r["feature"], r["status"]) for r in results if r["status"] != "ok"]
-    return inputs, data, summary, warnings
+
+
+def _warning_rows(results):
+    return [(r["feature"], r["status"]) for r in results if r["status"] != "ok"]
 
 
 def build_text(meta, settings, results):
@@ -174,8 +246,8 @@ def build_text(meta, settings, results):
     out.extend(["Warnings and errors", "-------------------"])
     out.extend(["- {}: {}".format(f, s) for f, s in warnings] or ["none"])
     out.append("")
-    out.extend(["Limitations", "-----------"] + ["- " + x for x in LIMITATIONS] + [""])
-    out.extend(["References", "----------"] + ["- " + x for x in REFERENCES])
+    out.extend(["Limitations", "-----------"] + ["- " + x for x in limitations(settings)] + [""])
+    out.extend(["References", "----------"] + ["- " + x for x in references(settings)])
     return "\n".join(out) + "\n"
 
 
@@ -224,8 +296,8 @@ def build_html(meta, settings, results):
            qgis=e(meta.get("qgis_version", "-")), inputs=kv(inputs),
            method="".join("<li>{}</li>".format(e(x)) for x in method_lines(settings)),
            data=kv(data), summary=kv(summary), head=head, body=body, warn=warn,
-           lim="".join("<li>{}</li>".format(e(x)) for x in LIMITATIONS),
-           refs="".join("<li>{}</li>".format(e(x)) for x in REFERENCES))
+           lim="".join("<li>{}</li>".format(e(x)) for x in limitations(settings)),
+           refs="".join("<li>{}</li>".format(e(x)) for x in references(settings)))
 
 
 def write_report(path, meta, settings, results):

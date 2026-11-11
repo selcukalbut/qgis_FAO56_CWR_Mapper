@@ -1,6 +1,6 @@
 """Point/field calculation chain, independent of QGIS.
 
-NASA POWER daily data -> FAO-56 ETo -> Kc x ETo = ETc -> Pe -> net irrigation.
+Climate (NASA POWER or station) -> FAO-56 ETo -> Kc x ETo = ETc -> Pe -> net irrigation.
 The QGIS layer/Processing code calls ``run_field`` once per field centroid.
 """
 
@@ -12,13 +12,16 @@ from .core import eto_series, field_balance
 
 def run_field(latitude, longitude, kc_crop, stage, planting_date, area_m2=None,
               elevation=None, pe_fraction=0.80, nir_period=field_balance.NIR_DEKAD,
-              efficiency=None, fetcher=None, cache_dir=None, today=None, series=None):
+              efficiency=None, fetcher=None, cache_dir=None, today=None, series=None,
+              estimation=None):
     """Full chain for one location.
 
     elevation: site elevation [m]; defaults to the POWER grid cell elevation,
     which is consistent with the gridded meteorology.
     series: an already downloaded nasa_power.PowerSeries for the same grid cell
-    (see nasa_power.cell_key) covering the season; otherwise it is fetched.
+    (see nasa_power.cell_key) or a station_csv.StationSeries covering the season;
+    otherwise NASA POWER data are fetched.
+    estimation: eto_series.Estimation for missing inputs (station data), or None.
     ETo always uses this location's own latitude.
     Returns the field_balance result with source details added to the summary.
     """
@@ -31,15 +34,16 @@ def run_field(latitude, longitude, kc_crop, stage, planting_date, area_m2=None,
         series = nasa_power.fetch(latitude, longitude, start, min(end, today),
                                   fetcher=fetcher, cache_dir=cache_dir, today=today)
     z = series.elevation if elevation is None else elevation
-    eto_rows = eto_series.daily_eto_series(series.days, latitude, z)
+    eto_rows = eto_series.daily_eto_series(series.days, latitude, z, estimation=estimation)
     result = field_balance.field_water_balance(
         eto_rows, kc_crop, stage, planting_date, area_m2=area_m2,
         pe_fraction=pe_fraction, nir_period=nir_period, efficiency=efficiency, today=today)
     result["summary"].update({
         "latitude": latitude, "longitude": longitude, "elevation_m": z,
-        "climate_source": "NASA POWER daily ({})".format(", ".join(series.sources)),
+        "climate_source": getattr(series, "description", None)
+        or "NASA POWER daily ({})".format(", ".join(series.sources)),
         "climate_grid_elevation_m": series.elevation,
         "climate_sources": list(series.sources), "climate_api_version": series.api_version,
-        "attribution": nasa_power.ATTRIBUTION,
+        "attribution": None if hasattr(series, "station_id") else nasa_power.ATTRIBUTION,
     })
     return result
