@@ -20,6 +20,8 @@ import math
 import os
 from datetime import date, datetime
 
+from ..core.climate import DailyClimate  # noqa: F401 (re-exported for callers)
+
 BASE_URL = "https://power.larc.nasa.gov/api/temporal/daily/point"
 PARAMETERS = ("T2M_MAX", "T2M_MIN", "T2MDEW", "RH2M", "WS2M",
               "ALLSKY_SFC_SW_DWN", "PRECTOTCORR")
@@ -32,26 +34,6 @@ _RADIATION_TO_MJ = {"MJ/m^2/day": 1.0, "kW-hr/m^2/day": 3.6}
 
 class PowerError(Exception):
     """Raised when the POWER API returns an error or an unusable response."""
-
-
-class DailyClimate:
-    """One day of POWER data; missing values are None."""
-
-    __slots__ = ("day", "tmax", "tmin", "tdew", "rh", "u2", "rs", "precip")
-
-    def __init__(self, day, tmax, tmin, tdew, rh, u2, rs, precip):
-        self.day = day
-        self.tmax = tmax
-        self.tmin = tmin
-        self.tdew = tdew
-        self.rh = rh
-        self.u2 = u2
-        self.rs = rs
-        self.precip = precip
-
-    def __repr__(self):
-        return "DailyClimate({})".format(", ".join(
-            "{}={!r}".format(k, getattr(self, k)) for k in self.__slots__))
 
 
 class PowerSeries:

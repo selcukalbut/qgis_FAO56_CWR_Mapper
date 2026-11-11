@@ -73,6 +73,7 @@ def field_water_balance(eto_rows, kc_crop, stage, planting_date, area_m2=None,
             "ETo": eto, "ETc": etc, "P": p, "Pe": pe,
             "NIR": water_balance.net_irrigation(etc, pe) if complete else None,
             "missing": not complete, "no_data": r is None,
+            "estimated": list(r.get("estimated", [])) if r else [],
         })
 
     periods = {"dekad": _aggregate(daily, "dekad"),
@@ -98,6 +99,7 @@ def field_water_balance(eto_rows, kc_crop, stage, planting_date, area_m2=None,
         "peak_dekad": peak["period"] if peak and peak["NIR"] else None,
         "peak_dekad_NIR_mm": peak["NIR"] if peak else None,
         "missing_days": sum(d["missing"] for d in daily),
+        "estimated_days": _estimated_days(daily),
         "crop": kc_crop.name, "stage_option": stage.label,
         "stage_lengths": stage.lengths,
         "stage_example": ", ".join(p for p in (stage.region, stage.plant_date) if p)
@@ -140,8 +142,19 @@ def volumes(nir_mm, area_m2):
     return out
 
 
+def _estimated_days(daily):
+    """{estimate description: number of season days} for inputs estimated with FAO-56."""
+    counts = {}
+    for d in daily:
+        for name in d["estimated"]:
+            counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
 def _warnings(daily, summary, today):
     w = []
+    for name, n in sorted(summary["estimated_days"].items()):
+        w.append("Estimated with FAO-56 missing-data procedure on {} season day(s): {}.".format(n, name))
     if summary["season_end"] > today:
         w.append("Season ends on {} which is after today ({}); no climate data exists for "
                  "future days.".format(summary["season_end"], today))

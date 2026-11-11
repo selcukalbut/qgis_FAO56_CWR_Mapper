@@ -115,6 +115,14 @@ def solar_radiation_from_sunshine(n, daylight, ra, a_s=0.25, b_s=0.50):
     return (a_s + b_s * n / daylight) * ra
 
 
+def solar_radiation_from_temperature(tmax, tmin, ra, krs=0.16):
+    """Eq. 50 (Hargreaves): Rs [MJ m-2 day-1] when radiation is not measured.
+
+    krs: 0.16 for interior and 0.19 for coastal locations [degC-0.5].
+    """
+    return krs * math.sqrt(max(tmax - tmin, 0.0)) * ra
+
+
 def clear_sky_radiation(ra, elevation):
     """Eq. 37: clear-sky solar radiation Rso [MJ m-2 day-1]."""
     return (0.75 + 2e-5 * elevation) * ra
@@ -152,6 +160,9 @@ def wind_speed_2m(uz, height):
 
 # --- Penman-Monteith ----------------------------------------------------------
 
+U2_MIN = 0.5   # FAO-56 Ch. 3, missing wind data: limit u2 >= 0.5 m/s in Eq. 6
+
+
 def eto_penman_monteith(t_mean, u2, es, ea, delta, gamma, rn, g=0.0):
     """Eq. 6: FAO-56 Penman-Monteith reference evapotranspiration ETo [mm day-1]."""
     num = (0.408 * delta * (rn - g)
@@ -165,12 +176,14 @@ def daily_eto(day, latitude, elevation, tmax, tmin, u2, ea, rs):
 
     ``day`` is a ``datetime.date``; ``ea`` [kPa] must already be derived with
     one of the actual_vapour_pressure_* functions and ``u2`` reduced to 2 m.
+    u2 below 0.5 m/s is raised to 0.5 m/s as FAO-56 recommends for calm air.
     Soil heat flux G is taken as 0 for the daily step (FAO-56 Eq. 42).
     Returns a dict with ETo and all intermediate values for traceability.
     """
     if not isinstance(day, date):
         raise TypeError("day must be a datetime.date")
     j = day_of_year(day)
+    u2 = max(u2, U2_MIN)
     t_mean = (tmax + tmin) / 2.0                     # Eq. 9
     pressure = atmospheric_pressure(elevation)
     gamma = psychrometric_constant(pressure)
