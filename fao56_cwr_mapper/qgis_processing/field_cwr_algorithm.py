@@ -548,8 +548,10 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         cache = network.cache_dir() if self.parameterAsBoolean(parameters, self.USE_CACHE, context) else None
         stations, climate_settings, estimation = None, {"source": "power"}, None
         source_kind = self.parameterAsEnum(parameters, self.CLIMATE_SOURCE, context)
+        self._estimation_off = False
         if source_kind == SOURCE_STATIONS:
             stations, climate_settings = self._load_stations(parameters, context, feedback)
+            self._estimation_off = not climate_settings["estimation"]
             if climate_settings["estimation"]:
                 estimation = eto_series.Estimation(krs=climate_settings["krs"])
         elif source_kind == SOURCE_OPEN_METEO:
@@ -572,6 +574,10 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         fields = QgsFields()
         for name, kind, length, prec in RESULT_FIELDS:
             fields.append(compat.make_field(name, kind, length, prec))
+        if all(source.fields().indexOf(n) >= 0 for n in ("NIR_mm", "clim_src", "status")):
+            feedback.pushWarning("The input layer looks like a result of this algorithm; its result "
+                                 "fields are kept and the new ones get a numeric suffix (e.g. NIR_mm_2). "
+                                 "Use the original field layer as input.")
         out_fields = QgsProcessingUtils.combineFields(source.fields(), fields)
         sink, dest_id = self.parameterAsSink(parameters, self.OUTPUT, context, out_fields,
                                              source.wkbType(), source.sourceCrs())
@@ -673,7 +679,7 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
             if error is not None:
                 failures += 1
                 result = {"status": "error: {}".format(error)}
-                feedback.reportError("Feature {}: {}".format(rec["id"], error), fatalError=False)
+                feedback.reportError("Feature {}: {}".format(rec["label"], error), fatalError=False)
             out = QgsFeature(out_fields)
             out.setGeometry(rec["geometry"])
             attrs = rec["attrs"]
@@ -784,6 +790,9 @@ class FieldCropWaterRequirement(QgsProcessingAlgorithm):
         crop, stage, stage_note = prep["crop"], prep["stage"], prep["stage_note"]
         s = r["summary"]
         warnings = ([stage_note + "."] if stage_note else []) + s["warnings"]
+        if getattr(self, "_estimation_off", False) and any(w.startswith("ETo needs") for w in warnings):
+            warnings.append("Turn on 'Estimate missing station humidity, radiation and wind' "
+                            "(advanced) to use the FAO-56 estimates.")
         status = "ok" if not warnings else "warning: " + " ".join(warnings)
         return {
             "crop_used": crop.name, "stage_used": stage.label,
@@ -821,11 +830,20 @@ def _report_row(label, result):
         row.update({"crop": s["crop"], "stage": s["stage_option"],
                     "stage_example": s.get("stage_example"), "stage_lengths": s.get("stage_lengths"),
                     "climate_sources": s.get("climate_sources"),
+                    "climate": _climate_cell(s, result.get("station_km")),
                     "api_version": s.get("climate_api_version"),
                     "season_start": s["season_start"], "season_end": s["season_end"],
                     "ETo": s["ETo_mm"], "ETc": s["ETc_mm"], "P": s["P_mm"], "Pe": s["Pe_mm"],
                     "NIR": s["NIR_mm"], "NIR_m3": s.get("NIR_m3"), "area_m2": s.get("area_m2")})
     return row
+
+
+def _climate_cell(summary, station_km):
+    """Climate data used by one feature, for the report table."""
+    text = summary.get("climate_source") or "-"
+    if station_km not in (None, NULL) and not text.startswith("Thiessen"):
+        text += " ({:.1f} km)".format(station_km)
+    return text
 
 
 def _csv(v):

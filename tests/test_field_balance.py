@@ -36,6 +36,7 @@ class TestFieldBalance(unittest.TestCase):
             self.assertIsNone(s[key], key)
         self.assertEqual(s["missing_days"], 40)
         self.assertTrue(any("no net irrigation requirement" in w for w in s["warnings"]))
+        self.assertTrue(any("(no rainfall on 40 day(s))" in w for w in s["warnings"]), s["warnings"])
 
     def test_dry_season_by_hand(self):
         # Kc sum = 10*0.5 + (5 + 0.05*55) + 10*1.0 + (10 - 0.05*55) = 30 -> ETc = 150 mm

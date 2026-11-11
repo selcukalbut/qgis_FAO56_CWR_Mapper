@@ -99,7 +99,9 @@ def daily_eto_series(records, latitude, elevation, estimation=None):
         base = {"day": rec.day, "precip": rec.precip, "ea_method": ea_method,
                 "rs_method": rs_method, "estimated": estimated}
         if None in (ea, rec.tmax, rec.tmin, u2, rs):
-            out.append(dict(base, ETo=None, missing=True))
+            lacking = [name for name, v in (("Tmax", rec.tmax), ("Tmin", rec.tmin), ("humidity", ea),
+                                            ("wind", u2), ("solar radiation", rs)) if v is None]
+            out.append(dict(base, ETo=None, missing=True, lacking=lacking))
             continue
         row = fao56.daily_eto(rec.day, latitude, elevation, rec.tmax, rec.tmin, u2, ea, rs)
         row.update(base, missing=False)

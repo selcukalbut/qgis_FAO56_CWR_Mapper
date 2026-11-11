@@ -232,7 +232,7 @@ def _fmt(v, nd=1):
 NEAR_REAL_TIME = ("GEOSIT", "FLASHFLUX")
 
 RESULT_COLUMNS = [("feature", "Field"), ("crop", "Crop"), ("season", "Season"),
-                  ("stage", "Stage lengths (ini/dev/mid/late)"),
+                  ("stage", "Stage lengths (ini/dev/mid/late)"), ("climate", "Climate data"),
                   ("ETo", "ETo mm"), ("ETc", "ETc mm"), ("P", "P mm"), ("Pe", "Pe mm"),
                   ("NIR", "NIR mm"), ("NIR_m3", "NIR m3"), ("status", "Status")]
 
@@ -244,7 +244,7 @@ def _result_cells(r):
         stage = "{} d".format("/".join(str(x) for x in r["stage_lengths"]))
         if r.get("stage_example"):
             stage = "{}: {}".format(r["stage_example"], stage)
-    return [r["feature"], r.get("crop") or "-", season, stage] + \
+    return [r["feature"], r.get("crop") or "-", season, stage, r.get("climate") or "-"] + \
         [_fmt(r.get(k)) for k in ("ETo", "ETc", "P", "Pe", "NIR")] + \
         [_fmt(r.get("NIR_m3"), 0), "ok" if r["status"] == "ok" else r["status"].split(":")[0]]
 
@@ -326,7 +326,8 @@ def _sections(meta, settings, results):
 
 def _summary(t):
     return [
-        ("Total area", "{} ha".format(_fmt(t["area_ha"], 2)) if t["area_ha"] else "-"),
+        ("Total area (fields with a net irrigation value)",
+         "{} ha".format(_fmt(t["area_ha"], 2)) if t["area_ha"] else "-"),
         ("Total net irrigation volume", "{} m3".format(_fmt(t["volume_m3"], 0)) if t["volume_m3"] else "-"),
         ("Area-weighted net irrigation", "{} mm".format(_fmt(t["mean_nir_mm"])) if t["mean_nir_mm"] else "-"),
     ]

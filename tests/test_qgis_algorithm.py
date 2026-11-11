@@ -356,6 +356,14 @@ class TestFieldAlgorithm(unittest.TestCase):
         feats, _ = self.run_alg(self.sample_layer(), CLIMATE_SOURCE=1, STATION_CSV=csv_path,
                                 STATION_LAYER=far, MAX_DISTANCE_KM=50)
         self.assertIn("no weather station within 50 km", feats["Field A"]["status"])
+        # estimates off: no ETo, the status names the missing inputs and the switch
+        feats, _ = self.run_alg(self.sample_layer(), CLIMATE_SOURCE=1, STATION_CSV=csv_path,
+                                STATION_LAYER=stations, ESTIMATE_MISSING=False)
+        status = feats["Field A"]["status"]
+        self.assertEqual(feats["Field A"]["NIR_mm"], NULL)
+        self.assertIn("missing humidity on", status)
+        self.assertIn("solar radiation on", status)
+        self.assertIn("Turn on 'Estimate missing", status)
 
     def test_station_input_errors(self):
         csv_path = self.station_csv(lambda d: {"A": "30,18,14,2,25,0"})

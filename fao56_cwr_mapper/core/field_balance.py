@@ -86,6 +86,7 @@ def field_water_balance(eto_rows, kc_crop, stage, planting_date, area_m2=None,
             "NIR": water_balance.net_irrigation(etc, pe) if complete and pe is not None else None,
             "missing": not complete, "no_data": r is None,
             "estimated": list(r.get("estimated", [])) if r else [],
+            "lacking": list(r.get("lacking", [])) if r else [],
             "reweighted": bool(r.get("reweighted")) if r else False,
         })
 
@@ -200,7 +201,19 @@ def _warnings(daily, summary, today):
         w.append("{} season day(s) have no climate record.".format(no_data))
     gaps = summary["missing_days"] - no_data
     if gaps:
-        w.append("{} season day(s) have incomplete climate data (missing ETo or rainfall).".format(gaps))
+        recorded = [d for d in daily if not d["no_data"]]
+        parts = [(sum(d["ETo"] is None for d in recorded), "no ETo"),
+                 (sum(d["P"] is None for d in recorded), "no rainfall")]
+        w.append("{} season day(s) have incomplete climate data ({}).".format(
+            gaps, ", ".join("{} on {} day(s)".format(what, n) for n, what in parts if n)))
+        lacking = {}
+        for d in recorded:
+            for name in d["lacking"]:
+                lacking[name] = lacking.get(name, 0) + 1
+        if lacking:
+            w.append("ETo needs {}: missing {}.".format(
+                "Tmax, Tmin, humidity, wind and solar radiation",
+                ", ".join("{} on {} day(s)".format(k, n) for k, n in sorted(lacking.items()))))
     if summary["NIR_mm"] is None:
         w.append("No dekad has complete climate data, so no net irrigation requirement is given.")
     elif summary["missing_days"]:

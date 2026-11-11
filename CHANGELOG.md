@@ -19,6 +19,12 @@
   stays the default. New result field `pe_method`.
 - Run report method, data source, references and limitations follow the
   chosen climate source and effective rainfall method.
+- From the QGIS GUI trial: totals without any value stay empty instead of 0
+  (e.g. a station without rainfall records); the status names what is missing
+  (no ETo / no rainfall, and which ETo input) and points to the estimation
+  switch; the report table has a "Climate data" column (station and distance
+  or Thiessen weights); a warning when the input is a previous result layer;
+  errors name the feature; numbers in the dialog with sensible decimals.
 
 ## 0.1.1 – 2026-11-03 (experimental)
 
